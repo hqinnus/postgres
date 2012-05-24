@@ -3,7 +3,7 @@
  * execAmi.c
  *	  miscellaneous executor access method routines
  *
- * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/executor/execAmi.c
@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include "executor/execdebug.h"
+#include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
 #include "executor/nodeBitmapAnd.h"
@@ -26,7 +27,6 @@
 #include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
-#include "executor/nodeIndexonlyscan.h"
 #include "executor/nodeIndexscan.h"
 #include "executor/nodeLimit.h"
 #include "executor/nodeLockRows.h"
@@ -38,6 +38,7 @@
 #include "executor/nodeRecursiveunion.h"
 #include "executor/nodeResult.h"
 #include "executor/nodeSeqscan.h"
+#include "executor/nodeMockSeqscan.h"
 #include "executor/nodeSetOp.h"
 #include "executor/nodeSort.h"
 #include "executor/nodeSubplan.h"
@@ -48,7 +49,6 @@
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
 #include "nodes/nodeFuncs.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 
 
@@ -152,12 +152,12 @@ ExecReScan(PlanState *node)
 			ExecReScanSeqScan((SeqScanState *) node);
 			break;
 
-		case T_IndexScanState:
-			ExecReScanIndexScan((IndexScanState *) node);
+		case T_MockSeqScanState:
+			ExecReScanMockSeqScan((MockSeqScanState *) node);
 			break;
 
-		case T_IndexOnlyScanState:
-			ExecReScanIndexOnlyScan((IndexOnlyScanState *) node);
+		case T_IndexScanState:
+			ExecReScanIndexScan((IndexScanState *) node);
 			break;
 
 		case T_BitmapIndexScanState:
@@ -274,12 +274,12 @@ ExecMarkPos(PlanState *node)
 			ExecSeqMarkPos((SeqScanState *) node);
 			break;
 
-		case T_IndexScanState:
-			ExecIndexMarkPos((IndexScanState *) node);
+		case T_SeqScanState:
+			ExecMockSeqMarkPos((MockSeqScanState *) node);
 			break;
 
-		case T_IndexOnlyScanState:
-			ExecIndexOnlyMarkPos((IndexOnlyScanState *) node);
+		case T_IndexScanState:
+			ExecIndexMarkPos((IndexScanState *) node);
 			break;
 
 		case T_TidScanState:
@@ -331,12 +331,12 @@ ExecRestrPos(PlanState *node)
 			ExecSeqRestrPos((SeqScanState *) node);
 			break;
 
-		case T_IndexScanState:
-			ExecIndexRestrPos((IndexScanState *) node);
+		case T_MockSeqScanState:
+			ExecMockSeqRestrPos((MockSeqScanState *) node);
 			break;
 
-		case T_IndexOnlyScanState:
-			ExecIndexOnlyRestrPos((IndexOnlyScanState *) node);
+		case T_IndexScanState:
+			ExecIndexRestrPos((IndexScanState *) node);
 			break;
 
 		case T_TidScanState:
@@ -383,8 +383,8 @@ ExecSupportsMarkRestore(NodeTag plantype)
 	switch (plantype)
 	{
 		case T_SeqScan:
+		case T_MockSeqScan:
 		case T_IndexScan:
-		case T_IndexOnlyScan:
 		case T_TidScan:
 		case T_ValuesScan:
 		case T_Material:
@@ -446,6 +446,7 @@ ExecSupportsBackwardScan(Plan *node)
 			}
 
 		case T_SeqScan:
+		case T_MockSeqScan:
 		case T_TidScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
@@ -454,10 +455,6 @@ ExecSupportsBackwardScan(Plan *node)
 
 		case T_IndexScan:
 			return IndexSupportsBackwardScan(((IndexScan *) node)->indexid) &&
-				TargetListSupportsBackwardScan(node->targetlist);
-
-		case T_IndexOnlyScan:
-			return IndexSupportsBackwardScan(((IndexOnlyScan *) node)->indexid) &&
 				TargetListSupportsBackwardScan(node->targetlist);
 
 		case T_SubqueryScan:
@@ -492,8 +489,7 @@ TargetListSupportsBackwardScan(List *targetlist)
 }
 
 /*
- * An IndexScan or IndexOnlyScan node supports backward scan only if the
- * index's AM does.
+ * An IndexScan node supports backward scan only if the index's AM does.
  */
 static bool
 IndexSupportsBackwardScan(Oid indexid)
