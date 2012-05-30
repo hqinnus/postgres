@@ -350,6 +350,22 @@ _copySeqScan(const SeqScan *from)
 }
 
 /*
+ * _copyMockSeqScan
+ */
+static MockSeqScan *
+_copyMockSeqScan(const MockSeqScan *from)
+{
+	MockSeqScan *newnode = makeNode(MockSeqScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((const Scan *) from, (Scan *) newnode);
+
+	return newnode;
+}
+
+/*
  * _copyIndexScan
  */
 static IndexScan *
@@ -3814,6 +3830,9 @@ copyObject(const void *from)
 			break;
 		case T_SeqScan:
 			retval = _copySeqScan(from);
+			break;
+		case T_MockSeqScan:
+			retval = _copyMockSeqScan(from);
 			break;
 		case T_IndexScan:
 			retval = _copyIndexScan(from);

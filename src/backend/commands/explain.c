@@ -725,6 +725,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_SeqScan:
 			pname = sname = "Seq Scan";
 			break;
+		case T_MockSeqScan:
+			pname = sname = "Mock Seq Scan";
+			break;
 		case T_IndexScan:
 			pname = sname = "Index Scan";
 			break;
@@ -864,6 +867,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_MockSeqScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_SubqueryScan:
@@ -1109,6 +1113,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			/* FALL THRU */
 		case T_SeqScan:
+		case T_MockSeqScan:
 		case T_ValuesScan:
 		case T_CteScan:
 		case T_WorkTableScan:
@@ -1819,6 +1824,7 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_MockSeqScan:
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:

@@ -103,6 +103,7 @@ int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 Cost		disable_cost = 1.0e10;
 
 bool		enable_seqscan = true;
+bool		enable_mockseqscan = true;
 bool		enable_indexscan = true;
 bool		enable_indexonlyscan = true;
 bool		enable_bitmapscan = true;
@@ -213,6 +214,59 @@ cost_seqscan(Path *path, PlannerInfo *root,
 	path->startup_cost = startup_cost;
 	path->total_cost = startup_cost + run_cost;
 }
+
+
+/*
+ * cost_mockseqscan
+ *	  Determines and returns the cost of scanning a relation mocking-sequentially.
+ *
+ * 'baserel' is the relation to be scanned
+ * 'param_info' is the ParamPathInfo if this is a parameterized path, else NULL
+ */
+void
+cost_mockseqscan(Path *path, PlannerInfo *root,
+			 RelOptInfo *baserel, ParamPathInfo *param_info)
+{
+	Cost		startup_cost = 0;
+	Cost		run_cost = 0;
+	double		spc_seq_page_cost;
+	QualCost	qpqual_cost;
+	Cost		cpu_per_tuple;
+
+	/* Should only be applied to base relations */
+	Assert(baserel->relid > 0);
+	Assert(baserel->rtekind == RTE_RELATION);
+
+	/* Mark the path with the correct row estimate */
+	if (param_info)
+		path->rows = param_info->ppi_rows;
+	else
+		path->rows = baserel->rows;
+
+	if (!enable_mockseqscan)
+		startup_cost += disable_cost;
+
+	/* fetch estimated page cost for tablespace containing table */
+	get_tablespace_page_costs(baserel->reltablespace,
+							  NULL,
+							  &spc_seq_page_cost);
+
+	/*
+	 * disk costs
+	 */
+	run_cost += spc_seq_page_cost * baserel->pages;
+
+	/* CPU costs */
+	get_restriction_qual_cost(root, baserel, param_info, &qpqual_cost);
+
+	startup_cost += qpqual_cost.startup;
+	cpu_per_tuple = cpu_tuple_cost + qpqual_cost.per_tuple;
+	run_cost += cpu_per_tuple * baserel->tuples;
+
+	path->startup_cost = startup_cost;
+	path->total_cost = startup_cost + run_cost;
+}
+
 
 /*
  * cost_index

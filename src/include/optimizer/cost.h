@@ -51,6 +51,7 @@ extern PGDLLIMPORT double cpu_operator_cost;
 extern PGDLLIMPORT int effective_cache_size;
 extern Cost disable_cost;
 extern bool enable_seqscan;
+extern bool enable_mockseqscan;
 extern bool enable_indexscan;
 extern bool enable_indexonlyscan;
 extern bool enable_bitmapscan;
@@ -68,6 +69,8 @@ extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 					double index_pages, PlannerInfo *root);
 extern void cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 						 ParamPathInfo *param_info);
+extern void cost_mockseqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+						ParamPathInfo *param_info);
 extern void cost_index(IndexPath *path, PlannerInfo *root,
 					   double loop_count);
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
