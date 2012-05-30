@@ -4,7 +4,7 @@
  *	  definitions for query plan nodes
  *
  *
- * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/plannodes.h
@@ -17,6 +17,7 @@
 #include "access/sdir.h"
 #include "nodes/bitmapset.h"
 #include "nodes/primnodes.h"
+#include "storage/itemptr.h"
 
 
 /* ----------------------------------------------------------------
@@ -37,8 +38,6 @@ typedef struct PlannedStmt
 
 	CmdType		commandType;	/* select|insert|update|delete */
 
-	uint32		queryId;		/* query identifier (copied from Query) */
-
 	bool		hasReturning;	/* is it insert|update|delete RETURNING? */
 
 	bool		hasModifyingCTE;	/* has insert|update|delete in WITH? */
@@ -55,6 +54,8 @@ typedef struct PlannedStmt
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
 
 	Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR */
+
+	IntoClause *intoClause;		/* target for SELECT INTO / CREATE TABLE AS */
 
 	List	   *subplans;		/* Plan trees for SubPlan expressions */
 
@@ -270,6 +271,12 @@ typedef struct Scan
  */
 typedef Scan SeqScan;
 
+/*
+ *		mock sequantial scan node
+ *
+ */
+typedef Scan MockSeqScan;
+
 /* ----------------
  *		mock sequential scan node
  * ----------------
@@ -291,8 +298,11 @@ typedef Scan MockSeqScan;
  *
  * indexqual has the same form, but the expressions have been commuted if
  * necessary to put the indexkeys on the left, and the indexkeys are replaced
- * by Var nodes identifying the index columns (their varno is INDEX_VAR and
- * their varattno is the index column number).
+ * by Var nodes identifying the index columns (varattno is the index column
+ * position, not the base table's column, even though varno is for the base
+ * table).	This is a bit hokey ... would be cleaner to use a special-purpose
+ * node type that could not be mistaken for a regular Var.	But it will do
+ * for now.
  *
  * indexorderbyorig is similarly the original form of any ORDER BY expressions
  * that are being implemented by the index, while indexorderby is modified to
@@ -303,9 +313,6 @@ typedef Scan MockSeqScan;
  * that the sort ordering is fully determinable from the top-level operators.
  * indexorderbyorig is unused at run time, but is needed for EXPLAIN.
  * (Note these fields are used for amcanorderbyop cases, not amcanorder cases.)
- *
- * indexorderdir specifies the scan ordering, for indexscans on amcanorder
- * indexes (for other indexes it should be "don't care").
  * ----------------
  */
 typedef struct IndexScan
@@ -318,33 +325,6 @@ typedef struct IndexScan
 	List	   *indexorderbyorig;		/* the same in original form */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 } IndexScan;
-
-/* ----------------
- *		index-only scan node
- *
- * IndexOnlyScan is very similar to IndexScan, but it specifies an
- * index-only scan, in which the data comes from the index not the heap.
- * Because of this, *all* Vars in the plan node's targetlist, qual, and
- * index expressions reference index columns and have varno = INDEX_VAR.
- * Hence we do not need separate indexqualorig and indexorderbyorig lists,
- * since their contents would be equivalent to indexqual and indexorderby.
- *
- * To help EXPLAIN interpret the index Vars for display, we provide
- * indextlist, which represents the contents of the index as a targetlist
- * with one TLE per index column.  Vars appearing in this list reference
- * the base table, and this is the only field in the plan node that may
- * contain such Vars.
- * ----------------
- */
-typedef struct IndexOnlyScan
-{
-	Scan		scan;
-	Oid			indexid;		/* OID of index to scan */
-	List	   *indexqual;		/* list of index quals (usually OpExprs) */
-	List	   *indexorderby;	/* list of index ORDER BY exprs */
-	List	   *indextlist;		/* TargetEntry list describing index's cols */
-	ScanDirection indexorderdir;	/* forward or backward or don't care */
-} IndexOnlyScan;
 
 /* ----------------
  *		bitmap index scan node
@@ -413,12 +393,18 @@ typedef struct TidScan
  * the generic lefttree field as you might expect.	This is because we do
  * not want plan-tree-traversal routines to recurse into the subplan without
  * knowing that they are changing Query contexts.
+ *
+ * Note: subrtable is used just to carry the subquery rangetable from
+ * createplan.c to setrefs.c; it should always be NIL by the time the
+ * executor sees the plan.	Similarly for subrowmark.
  * ----------------
  */
 typedef struct SubqueryScan
 {
 	Scan		scan;
 	Plan	   *subplan;
+	List	   *subrtable;		/* temporary workspace for planner */
+	List	   *subrowmark;		/* temporary workspace for planner */
 } SubqueryScan;
 
 /* ----------------
@@ -468,22 +454,14 @@ typedef struct WorkTableScan
 
 /* ----------------
  *		ForeignScan node
- *
- * fdw_exprs and fdw_private are both under the control of the foreign-data
- * wrapper, but fdw_exprs is presumed to contain expression trees and will
- * be post-processed accordingly by the planner; fdw_private won't be.
- * Note that everything in both lists must be copiable by copyObject().
- * One way to store an arbitrary blob of bytes is to represent it as a bytea
- * Const.  Usually, though, you'll be better off choosing a representation
- * that can be dumped usefully by nodeToString().
  * ----------------
  */
 typedef struct ForeignScan
 {
 	Scan		scan;
-	List	   *fdw_exprs;		/* expressions that FDW may evaluate */
-	List	   *fdw_private;	/* private data for FDW */
 	bool		fsSystemCol;	/* true if any "system column" is needed */
+	/* use struct pointer to avoid including fdwapi.h here */
+	struct FdwPlan *fdwplan;
 } ForeignScan;
 
 
@@ -829,13 +807,13 @@ typedef struct PlanRowMark
  * relations are recorded as a simple list of OIDs, and everything else
  * is represented as a list of PlanInvalItems.	A PlanInvalItem is designed
  * to be used with the syscache invalidation mechanism, so it identifies a
- * system catalog entry by cache ID and hash value.
+ * system catalog entry by cache ID and tuple TID.
  */
 typedef struct PlanInvalItem
 {
 	NodeTag		type;
 	int			cacheId;		/* a syscache ID, see utils/syscache.h */
-	uint32		hashValue;		/* hash value of object's cache lookup key */
+	ItemPointerData tupleId;	/* TID of the object's catalog tuple */
 } PlanInvalItem;
 
 #endif   /* PLANNODES_H */

@@ -3,7 +3,7 @@
  * execAmi.c
  *	  miscellaneous executor access method routines
  *
- * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/executor/execAmi.c
@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include "executor/execdebug.h"
+#include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
 #include "executor/nodeBitmapAnd.h"
@@ -26,7 +27,6 @@
 #include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
-#include "executor/nodeIndexonlyscan.h"
 #include "executor/nodeIndexscan.h"
 #include "executor/nodeLimit.h"
 #include "executor/nodeLockRows.h"
@@ -49,7 +49,6 @@
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
 #include "nodes/nodeFuncs.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 
 
@@ -159,10 +158,6 @@ ExecReScan(PlanState *node)
 
 		case T_IndexScanState:
 			ExecReScanIndexScan((IndexScanState *) node);
-			break;
-
-		case T_IndexOnlyScanState:
-			ExecReScanIndexOnlyScan((IndexOnlyScanState *) node);
 			break;
 
 		case T_BitmapIndexScanState:
@@ -287,10 +282,6 @@ ExecMarkPos(PlanState *node)
 			ExecIndexMarkPos((IndexScanState *) node);
 			break;
 
-		case T_IndexOnlyScanState:
-			ExecIndexOnlyMarkPos((IndexOnlyScanState *) node);
-			break;
-
 		case T_TidScanState:
 			ExecTidMarkPos((TidScanState *) node);
 			break;
@@ -348,10 +339,6 @@ ExecRestrPos(PlanState *node)
 			ExecIndexRestrPos((IndexScanState *) node);
 			break;
 
-		case T_IndexOnlyScanState:
-			ExecIndexOnlyRestrPos((IndexOnlyScanState *) node);
-			break;
-
 		case T_TidScanState:
 			ExecTidRestrPos((TidScanState *) node);
 			break;
@@ -398,7 +385,6 @@ ExecSupportsMarkRestore(NodeTag plantype)
 		case T_SeqScan:
 		case T_MockSeqScan:
 		case T_IndexScan:
-		case T_IndexOnlyScan:
 		case T_TidScan:
 		case T_ValuesScan:
 		case T_Material:
@@ -471,10 +457,6 @@ ExecSupportsBackwardScan(Plan *node)
 			return IndexSupportsBackwardScan(((IndexScan *) node)->indexid) &&
 				TargetListSupportsBackwardScan(node->targetlist);
 
-		case T_IndexOnlyScan:
-			return IndexSupportsBackwardScan(((IndexOnlyScan *) node)->indexid) &&
-				TargetListSupportsBackwardScan(node->targetlist);
-
 		case T_SubqueryScan:
 			return ExecSupportsBackwardScan(((SubqueryScan *) node)->subplan) &&
 				TargetListSupportsBackwardScan(node->targetlist);
@@ -507,8 +489,7 @@ TargetListSupportsBackwardScan(List *targetlist)
 }
 
 /*
- * An IndexScan or IndexOnlyScan node supports backward scan only if the
- * index's AM does.
+ * An IndexScan node supports backward scan only if the index's AM does.
  */
 static bool
 IndexSupportsBackwardScan(Oid indexid)

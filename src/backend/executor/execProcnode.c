@@ -7,7 +7,7 @@
  *	 ExecProcNode, or ExecEndNode on its subnodes and do the appropriate
  *	 processing.
  *
- * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -55,7 +55,7 @@
  *		of ExecInitNode() is a plan state tree built with the same structure
  *		as the underlying plan tree.
  *
- *	  * Then when ExecutorRun() is called, it calls ExecutePlan() which calls
+ *	  * Then when ExecRun() is called, it calls ExecutePlan() which calls
  *		ExecProcNode() repeatedly on the top node of the plan state tree.
  *		Each time this happens, ExecProcNode() will end up calling
  *		ExecNestLoop(), which calls ExecProcNode() on its subplans.
@@ -65,7 +65,7 @@
  *		form the tuples it returns.
  *
  *	  * Eventually ExecSeqScan() stops returning tuples and the nest
- *		loop join ends.  Lastly, ExecutorEnd() calls ExecEndNode() which
+ *		loop join ends.  Lastly, ExecEnd() calls ExecEndNode() which
  *		calls ExecEndNestLoop() which in turn calls ExecEndNode() on
  *		its subplans which result in ExecEndSeqScan().
  *
@@ -77,6 +77,7 @@
 #include "postgres.h"
 
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
 #include "executor/nodeBitmapAnd.h"
@@ -89,7 +90,6 @@
 #include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
-#include "executor/nodeIndexonlyscan.h"
 #include "executor/nodeIndexscan.h"
 #include "executor/nodeLimit.h"
 #include "executor/nodeLockRows.h"
@@ -197,11 +197,6 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_IndexScan:
 			result = (PlanState *) ExecInitIndexScan((IndexScan *) node,
 													 estate, eflags);
-			break;
-
-		case T_IndexOnlyScan:
-			result = (PlanState *) ExecInitIndexOnlyScan((IndexOnlyScan *) node,
-														 estate, eflags);
 			break;
 
 		case T_BitmapIndexScan:
@@ -406,15 +401,19 @@ ExecProcNode(PlanState *node)
 			break;
 
 		case T_MockSeqScanState:
+<<<<<<< HEAD
 			result = ExecMockSeqScan((MockSeqScanState *) node);
 			break;
 
 		case T_IndexScanState:
 			result = ExecIndexScan((IndexScanState *) node);
+=======
+			result = ExecMockSeqScan((SeqScanState *) node);
+>>>>>>> 911dcf2e311d071d93fec67e49ce1d4aea52f96e
 			break;
 
-		case T_IndexOnlyScanState:
-			result = ExecIndexOnlyScan((IndexOnlyScanState *) node);
+		case T_IndexScanState:
+			result = ExecIndexScan((IndexScanState *) node);
 			break;
 
 			/* BitmapIndexScanState does not yield tuples */
@@ -645,14 +644,17 @@ ExecEndNode(PlanState *node)
 
 		case T_MockSeqScanState:
 			ExecEndMockSeqScan((MockSeqScanState *) node);
+<<<<<<< HEAD
 			break;
 
 		case T_IndexScanState:
 			ExecEndIndexScan((IndexScanState *) node);
+=======
+>>>>>>> 911dcf2e311d071d93fec67e49ce1d4aea52f96e
 			break;
 
-		case T_IndexOnlyScanState:
-			ExecEndIndexOnlyScan((IndexOnlyScanState *) node);
+		case T_IndexScanState:
+			ExecEndIndexScan((IndexScanState *) node);
 			break;
 
 		case T_BitmapIndexScanState:
