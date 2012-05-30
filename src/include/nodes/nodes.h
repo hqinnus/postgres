@@ -4,7 +4,7 @@
  *	  Definitions for tagged nodes.
  *
  *
- * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/nodes.h
@@ -53,6 +53,7 @@ typedef enum NodeTag
 	T_SeqScan,
 	T_MockSeqScan,
 	T_IndexScan,
+	T_IndexOnlyScan,
 	T_BitmapIndexScan,
 	T_BitmapHeapScan,
 	T_TidScan,
@@ -62,7 +63,6 @@ typedef enum NodeTag
 	T_CteScan,
 	T_WorkTableScan,
 	T_ForeignScan,
-	T_FdwPlan,
 	T_Join,
 	T_NestLoop,
 	T_MergeJoin,
@@ -99,6 +99,7 @@ typedef enum NodeTag
 	T_SeqScanState,
 	T_MockSeqScanState,
 	T_IndexScanState,
+	T_IndexOnlyScanState,
 	T_BitmapIndexScanState,
 	T_BitmapHeapScanState,
 	T_TidScanState,
@@ -213,6 +214,7 @@ typedef enum NodeTag
 	T_PlannerGlobal,
 	T_RelOptInfo,
 	T_IndexOptInfo,
+	T_ParamPathInfo,
 	T_Path,
 	T_IndexPath,
 	T_BitmapHeapPath,
@@ -232,7 +234,6 @@ typedef enum NodeTag
 	T_EquivalenceMember,
 	T_PathKey,
 	T_RestrictInfo,
-	T_InnerIndexscanInfo,
 	T_PlaceHolderVar,
 	T_SpecialJoinInfo,
 	T_AppendRelInfo,
@@ -291,7 +292,6 @@ typedef enum NodeTag
 	T_IndexStmt,
 	T_CreateFunctionStmt,
 	T_AlterFunctionStmt,
-	T_RemoveFuncStmt,
 	T_DoStmt,
 	T_RenameStmt,
 	T_RuleStmt,
@@ -306,15 +306,14 @@ typedef enum NodeTag
 	T_DropdbStmt,
 	T_VacuumStmt,
 	T_ExplainStmt,
+	T_CreateTableAsStmt,
 	T_CreateSeqStmt,
 	T_AlterSeqStmt,
 	T_VariableSetStmt,
 	T_VariableShowStmt,
 	T_DiscardStmt,
 	T_CreateTrigStmt,
-	T_DropPropertyStmt,
 	T_CreatePLangStmt,
-	T_DropPLangStmt,
 	T_CreateRoleStmt,
 	T_AlterRoleStmt,
 	T_DropRoleStmt,
@@ -328,12 +327,9 @@ typedef enum NodeTag
 	T_AlterRoleSetStmt,
 	T_CreateConversionStmt,
 	T_CreateCastStmt,
-	T_DropCastStmt,
 	T_CreateOpClassStmt,
 	T_CreateOpFamilyStmt,
 	T_AlterOpFamilyStmt,
-	T_RemoveOpClassStmt,
-	T_RemoveOpFamilyStmt,
 	T_PrepareStmt,
 	T_ExecuteStmt,
 	T_DeallocateStmt,
@@ -346,15 +342,14 @@ typedef enum NodeTag
 	T_ReassignOwnedStmt,
 	T_CompositeTypeStmt,
 	T_CreateEnumStmt,
+	T_CreateRangeStmt,
 	T_AlterEnumStmt,
 	T_AlterTSDictionaryStmt,
 	T_AlterTSConfigurationStmt,
 	T_CreateFdwStmt,
 	T_AlterFdwStmt,
-	T_DropFdwStmt,
 	T_CreateForeignServerStmt,
 	T_AlterForeignServerStmt,
-	T_DropForeignServerStmt,
 	T_CreateUserMappingStmt,
 	T_AlterUserMappingStmt,
 	T_DropUserMappingStmt,
@@ -396,7 +391,7 @@ typedef enum NodeTag
 	T_FuncWithArgs,
 	T_AccessPriv,
 	T_CreateOpClassItem,
-	T_InhRelation,
+	T_TableLikeClause,
 	T_FunctionParameter,
 	T_LockingClause,
 	T_RowMarkClause,
@@ -438,7 +433,7 @@ typedef struct Node
 	NodeTag		type;
 } Node;
 
-#define nodeTag(nodeptr)		(((Node*)(nodeptr))->type)
+#define nodeTag(nodeptr)		(((const Node*)(nodeptr))->type)
 
 /*
  * newNode -
@@ -494,7 +489,7 @@ extern PGDLLIMPORT Node *newNodeMacroHolder;
 /*
  * nodes/{outfuncs.c,print.c}
  */
-extern char *nodeToString(void *obj);
+extern char *nodeToString(const void *obj);
 
 /*
  * nodes/{readfuncs.c,read.c}
@@ -504,12 +499,12 @@ extern void *stringToNode(char *str);
 /*
  * nodes/copyfuncs.c
  */
-extern void *copyObject(void *obj);
+extern void *copyObject(const void *obj);
 
 /*
  * nodes/equalfuncs.c
  */
-extern bool equal(void *a, void *b);
+extern bool equal(const void *a, const void *b);
 
 
 /*
