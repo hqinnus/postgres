@@ -87,6 +87,7 @@ static XLogRecPtr log_heap_update(Relation reln, Buffer oldbuf,
 				bool all_visible_cleared, bool new_all_visible_cleared);
 static bool HeapSatisfiesHOTUpdate(Relation relation, Bitmapset *hot_attrs,
 					   HeapTuple oldtup, HeapTuple newtup);
+static int get_rand_in_range(int a, int b);
 
 
 /* ----------------------------------------------------------------
@@ -836,6 +837,178 @@ heapgettup_pagemode(HeapScanDesc scan,
 	}
 }
 
+/* ----------------
+ *		heapgettup_samplescan - fetch next heap tuple in page-at-a-time mode
+ *
+ * It is fused with algo for SYSTEM sampling method on the page selection.
+ * This function will merge with heapgettup_pagemode in the future.
+ * ----------------
+ */
+static void
+heapgettup_samplescan(HeapScanDesc scan,
+					int nkeys,
+					ScanKey key,
+					int sample_percent)
+{
+	HeapTuple	tuple = &(scan->rs_ctup);
+	BlockNumber page;
+	bool		finished;
+	Page		dp;
+	int			lines;
+	int			lineindex;
+	OffsetNumber lineoff;
+	int			linesleft;
+	ItemId		lpp;
+	int			rand_percent;
+
+	if (!scan->rs_inited)
+	{
+		/*
+		 * return null immediately if relation is empty
+		 */
+		if (scan->rs_nblocks == 0)
+		{
+			Assert(!BufferIsValid(scan->rs_cbuf));
+			tuple->t_data = NULL;
+			return;
+		}
+		page = scan->rs_startblock; /* first page */
+		/*
+		 * page fetching decision
+		 */
+		while(page <= scan->rs_nblocks)
+		{
+			rand_percent = get_rand_in_range(0, 100);
+			if(rand_percent >= sample_percent)
+				page++;
+			else break;
+		}
+		heapgetpage(scan, page);
+		lineindex = 0;
+		scan->rs_inited = true;
+	}
+	else
+	{
+		/* continue from previously returned page/tuple */
+		page = scan->rs_cblock;		/* current page */
+		lineindex = scan->rs_cindex + 1;
+	}
+
+	dp = (Page) BufferGetPage(scan->rs_cbuf);
+	lines = scan->rs_ntuples;
+	/* page and lineindex now reference the next visible tid */
+
+	linesleft = lines - lineindex;
+
+	/*
+	 * advance the scan until we find a qualifying tuple or run out of stuff
+	 * to scan
+	 */
+	for (;;)
+	{
+		while (linesleft > 0)
+		{
+			lineoff = scan->rs_vistuples[lineindex];
+			lpp = PageGetItemId(dp, lineoff);
+			Assert(ItemIdIsNormal(lpp));
+
+			tuple->t_data = (HeapTupleHeader) PageGetItem((Page) dp, lpp);
+			tuple->t_len = ItemIdGetLength(lpp);
+			ItemPointerSet(&(tuple->t_self), page, lineoff);
+
+			/*
+			 * if current tuple qualifies, return it.
+			 */
+			if (key != NULL)
+			{
+				bool		valid;
+
+				HeapKeyTest(tuple, RelationGetDescr(scan->rs_rd),
+							nkeys, key, valid);
+				if (valid)
+				{
+					scan->rs_cindex = lineindex;
+					return;
+				}
+			}
+			else
+			{
+				scan->rs_cindex = lineindex;
+				return;
+			}
+
+			/*
+			 * otherwise move to the next item on the page
+			 */
+			--linesleft;
+			++lineindex;
+		}
+
+		/*
+		 * if we get here, it means we've exhausted the items on this page and
+		 * it's time to move to the next.
+		 */
+		page++;
+		while(page <= scan->rs_nblocks)
+		{
+			rand_percent = get_rand_in_range(0, 100);
+			if(rand_percent >= sample_percent)
+				page++;
+			else break;
+		}
+		if (page >= scan->rs_nblocks)
+			page = 0;
+		finished = (page == scan->rs_startblock);
+
+		/*
+		 * Report our new scan position for synchronization purposes.
+		 *
+		 * Note: we do this before checking for end of scan so that the
+		 * final state of the position hint is back at the start of the
+		 * rel.  That's not strictly necessary, but otherwise when you run
+		 * the same query multiple times the starting position would shift
+		 * a little bit backwards on every invocation, which is confusing.
+		 * We don't guarantee any specific ordering in general, though.
+		 */
+		if (scan->rs_syncscan)
+			ss_report_location(scan->rs_rd, page);
+
+		/*
+		 * return NULL if we've exhausted all the pages
+		 */
+		if (finished)
+		{
+			if (BufferIsValid(scan->rs_cbuf))
+				ReleaseBuffer(scan->rs_cbuf);
+			scan->rs_cbuf = InvalidBuffer;
+			scan->rs_cblock = InvalidBlockNumber;
+			tuple->t_data = NULL;
+			scan->rs_inited = false;
+			return;
+		}
+
+		heapgetpage(scan, page);
+
+		dp = (Page) BufferGetPage(scan->rs_cbuf);
+		lines = scan->rs_ntuples;
+		linesleft = lines;
+		lineindex = 0;
+	}
+}
+
+/*
+ * Returns a randomly-generated trigger x, such that a <= x < b
+ */
+static int
+get_rand_in_range(int a, int b)
+{
+	/*
+	 * XXX: Using modulus takes the low-order bits of the random
+	 * number; since the high-order bits may contain more entropy
+	 * with more PRNGs, we should probably use those instead.
+	 */
+	return (random() % b) + a;
+}
 
 #if defined(DISABLE_COMPLEX_MACRO)
 /*
@@ -1327,6 +1500,36 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
 							scan->rs_nkeys, scan->rs_key);
 	else
 		heapgettup(scan, direction, scan->rs_nkeys, scan->rs_key);
+
+	if (scan->rs_ctup.t_data == NULL)
+	{
+		HEAPDEBUG_2;			/* heap_getnext returning EOS */
+		return NULL;
+	}
+
+	/*
+	 * if we get here it means we have a new current scan tuple, so point to
+	 * the proper return buffer and return the tuple.
+	 */
+	HEAPDEBUG_3;				/* heap_getnext returning tuple */
+
+	pgstat_count_heap_getnext(scan->rs_rd);
+
+	return &(scan->rs_ctup);
+}
+
+/*
+ * heap_getnext for samplescan, will merge with heap_getnext in the future
+ */
+HeapTuple
+heap_getnext_samplescan(HeapScanDesc scan, int sample_percent)
+{
+	/* Note: no locking manipulations needed */
+
+	HEAPDEBUG_1;				/* heap_getnext( info ) */
+
+	heapgettup_samplescan(scan,
+						scan->rs_nkeys, scan->rs_key, sample_percent);
 
 	if (scan->rs_ctup.t_data == NULL)
 	{

@@ -297,7 +297,8 @@ searchRangeTable(ParseState *pstate, RangeVar *relation)
 
 			if (rte->rtekind == RTE_RELATION &&
 				OidIsValid(relId) &&
-				rte->relid == relId)
+				rte->relid == relId &&
+				equal(rte->sample_info, relation->sample_info))
 				return rte;
 			if (rte->rtekind == RTE_CTE &&
 				cte != NULL &&
@@ -901,6 +902,7 @@ addRangeTableEntry(ParseState *pstate,
 	rel = parserOpenTable(pstate, relation, lockmode);
 	rte->relid = RelationGetRelid(rel);
 	rte->relkind = rel->rd_rel->relkind;
+	rte->sample_info = relation->sample_info;
 
 	/*
 	 * Build the list of effective column names using user-supplied aliases
@@ -964,6 +966,7 @@ addRangeTableEntryForRelation(ParseState *pstate,
 	rte->alias = alias;
 	rte->relid = RelationGetRelid(rel);
 	rte->relkind = rel->rd_rel->relkind;
+	rte->sample_info = NULL;
 
 	/*
 	 * Build the list of effective column names using user-supplied aliases
@@ -1021,6 +1024,7 @@ addRangeTableEntryForSubquery(ParseState *pstate,
 
 	rte->rtekind = RTE_SUBQUERY;
 	rte->relid = InvalidOid;
+	rte->sample_info = NULL;
 	rte->subquery = subquery;
 	rte->alias = alias;
 
@@ -1102,6 +1106,7 @@ addRangeTableEntryForFunction(ParseState *pstate,
 
 	rte->rtekind = RTE_FUNCTION;
 	rte->relid = InvalidOid;
+	rte->sample_info = NULL;
 	rte->subquery = NULL;
 	rte->funcexpr = funcexpr;
 	rte->funccoltypes = NIL;
@@ -1239,6 +1244,7 @@ addRangeTableEntryForValues(ParseState *pstate,
 
 	rte->rtekind = RTE_VALUES;
 	rte->relid = InvalidOid;
+	rte->sample_info = NULL;
 	rte->subquery = NULL;
 	rte->values_lists = exprs;
 	rte->values_collations = collations;
@@ -1322,6 +1328,7 @@ addRangeTableEntryForJoin(ParseState *pstate,
 
 	rte->rtekind = RTE_JOIN;
 	rte->relid = InvalidOid;
+	rte->sample_info = NULL;
 	rte->subquery = NULL;
 	rte->jointype = jointype;
 	rte->joinaliasvars = aliasvars;

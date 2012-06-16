@@ -699,8 +699,9 @@ typedef struct RangeTblEntry
 	/*
 	 * Fields valid for a plain relation RTE (else zero):
 	 */
-	Oid			relid;			/* OID of the relation */
-	char		relkind;		/* relation kind (see pg_class.relkind) */
+	Oid			relid;				/* OID of the relation */
+	TableSampleInfo *sample_info;	/* Fields for tablesampleinfo */
+	char		relkind;			/* relation kind (see pg_class.relkind) */
 
 	/*
 	 * Fields valid for a subquery RTE (else NULL):
@@ -762,6 +763,7 @@ typedef struct RangeTblEntry
 	Oid			checkAsUser;	/* if valid, check access as this role */
 	Bitmapset  *selectedCols;	/* columns needing SELECT permission */
 	Bitmapset  *modifiedCols;	/* columns needing INSERT/UPDATE permission */
+
 } RangeTblEntry;
 
 /*

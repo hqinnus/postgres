@@ -117,6 +117,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->subroot = NULL;
 	rel->fdwroutine = NULL;
 	rel->fdw_private = NULL;
+	rel->has_table_sample = (rte->sample_info != NULL);
 	rel->baserestrictinfo = NIL;
 	rel->baserestrictcost.startup = 0;
 	rel->baserestrictcost.per_tuple = 0;
@@ -373,6 +374,7 @@ build_join_rel(PlannerInfo *root,
 	joinrel->subroot = NULL;
 	joinrel->fdwroutine = NULL;
 	joinrel->fdw_private = NULL;
+	joinrel->has_table_sample = false;
 	joinrel->baserestrictinfo = NIL;
 	joinrel->baserestrictcost.startup = 0;
 	joinrel->baserestrictcost.per_tuple = 0;

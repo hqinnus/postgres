@@ -175,6 +175,7 @@ Section: Class 22 - Data Exception
 22010    E    ERRCODE_INVALID_INDICATOR_PARAMETER_VALUE                      invalid_indicator_parameter_value
 22023    E    ERRCODE_INVALID_PARAMETER_VALUE                                invalid_parameter_value
 2201B    E    ERRCODE_INVALID_REGULAR_EXPRESSION                             invalid_regular_expression
+2202H    E    ERRCODE_INVALID_SAMPLE_SIZE                                    invalid_sample_size
 2201W    E    ERRCODE_INVALID_ROW_COUNT_IN_LIMIT_CLAUSE                      invalid_row_count_in_limit_clause
 2201X    E    ERRCODE_INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE              invalid_row_count_in_result_offset_clause
 22009    E    ERRCODE_INVALID_TIME_ZONE_DISPLACEMENT_VALUE                   invalid_time_zone_displacement_value

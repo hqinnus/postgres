@@ -54,7 +54,7 @@ static Material *create_material_plan(PlannerInfo *root, MaterialPath *best_path
 static Plan *create_unique_plan(PlannerInfo *root, UniquePath *best_path);
 static SeqScan *create_seqscan_plan(PlannerInfo *root, Path *best_path,
 					List *tlist, List *scan_clauses);
-static MockSeqScan *create_mockseqscan_plan(PlannerInfo *root, Path *best_path,
+static SampleScan *create_samplescan_plan(PlannerInfo *root, Path *best_path,
 						List *tlist, List *scan_clauses);
 static Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
 					  List *tlist, List *scan_clauses, bool indexonly);
@@ -93,7 +93,7 @@ static List *order_qual_clauses(PlannerInfo *root, List *clauses);
 static void copy_path_costsize(Plan *dest, Path *src);
 static void copy_plan_costsize(Plan *dest, Plan *src);
 static SeqScan *make_seqscan(List *qptlist, List *qpqual, Index scanrelid);
-static MockSeqScan *make_mockseqscan(List *qptlist, List *qpqual, Index scanrelid);
+static SampleScan *make_samplescan(PlannerInfo *root, List *qptlist, List *qpqual, Index scanrelid);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual, Index scanrelid,
 			   Oid indexid, List *indexqual, List *indexqualorig,
 			   List *indexorderby, List *indexorderbyorig,
@@ -215,7 +215,7 @@ create_plan_recurse(PlannerInfo *root, Path *best_path)
 	switch (best_path->pathtype)
 	{
 		case T_SeqScan:
-		case T_MockSeqScan:
+		case T_SampleScan:
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
@@ -328,8 +328,8 @@ create_scan_plan(PlannerInfo *root, Path *best_path)
 												scan_clauses);
 			break;
 
-		case T_MockSeqScan:
-			plan = (Plan *) create_mockseqscan_plan(root,
+		case T_SampleScan:
+			plan = (Plan *) create_samplescan_plan(root,
 													best_path,
 													tlist,
 													scan_clauses);
@@ -521,7 +521,7 @@ disuse_physical_tlist(Plan *plan, Path *path)
 	switch (path->pathtype)
 	{
 		case T_SeqScan:
-		case T_MockSeqScan:
+		case T_SampleScan:
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
@@ -1099,20 +1099,21 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 }
 
 /*
- * create_mockseqscan_plan
- *	 Returns a mockseqscan plan for the base relation scanned by 'best_path'
+ * create_samplescan_plan
+ *	 Returns a samplescan plan for the base relation scanned by 'best_path'
  *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
  */
-static MockSeqScan *
-create_mockseqscan_plan(PlannerInfo *root, Path *best_path,
+static SampleScan *
+create_samplescan_plan(PlannerInfo *root, Path *best_path,
 					List *tlist, List *scan_clauses)
 {
-	MockSeqScan    *scan_plan;
+	SampleScan    *scan_plan;
 	Index		scan_relid = best_path->parent->relid;
 
 	/* it should be a base rel... */
 	Assert(scan_relid > 0);
 	Assert(best_path->parent->rtekind == RTE_RELATION);
+	Assert(best_path->pathtype == T_SampleScan);
 
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(root, scan_clauses);
@@ -1121,17 +1122,17 @@ create_mockseqscan_plan(PlannerInfo *root, Path *best_path,
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
 
 	/* Replace any outer-relation variables with nestloop params */
-	if (best_path->param_info)
-	{
-		scan_clauses = (List *)
-			replace_nestloop_params(root, (Node *) scan_clauses);
-	}
+	//if (best_path->param_info)
+	//{
+	//	scan_clauses = (List *)
+	//		replace_nestloop_params(root, (Node *) scan_clauses);
+	//}
 
-	scan_plan = make_mockseqscan(tlist,
+	scan_plan = make_samplescan(root, tlist,
 							 scan_clauses,
 							 scan_relid);
 
-	copy_path_costsize(&scan_plan->plan, best_path);
+	copy_path_costsize(&scan_plan->scan.plan, best_path);
 
 	return scan_plan;
 }
@@ -3097,20 +3098,30 @@ make_seqscan(List *qptlist,
 }
 
 
-static MockSeqScan *
-make_mockseqscan(List *qptlist,
+static SampleScan *
+make_samplescan(PlannerInfo *root,
+			 List *qptlist,
 			 List *qpqual,
 			 Index scanrelid)
 {
-	MockSeqScan    *node = makeNode(MockSeqScan);
-	Plan	   *plan = &node->plan;
+	SampleScan    *node = makeNode(SampleScan);
+	Plan	   *plan = &node->scan.plan;
+	RangeTblEntry *rte;
 
 	/* cost should be inserted by caller */
 	plan->targetlist = qptlist;
 	plan->qual = qpqual;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
-	node->scanrelid = scanrelid;
+	node->scan.scanrelid = scanrelid;
+
+	/*
+	 * For the convenience of nodeSamplescan.c, we stash a pointer to
+	 * the TableSampleInfo for this SampleScan in the SampleScan's
+	 * plan node.
+	 */
+	rte = planner_rt_fetch(scanrelid, root);
+	node->sample_info = rte->sample_info;
 
 	return node;
 }

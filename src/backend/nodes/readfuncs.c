@@ -380,6 +380,17 @@ _readRangeVar(void)
 	READ_CHAR_FIELD(relpersistence);
 	READ_NODE_FIELD(alias);
 	READ_LOCATION_FIELD(location);
+	READ_NODE_FIELD(sample_info);
+
+	READ_DONE();
+}
+
+static TableSampleInfo *
+_readTableSampleInfo(void)
+{
+	READ_LOCALS(TableSampleInfo);
+
+	READ_INT_FIELD(sample_percent);
 
 	READ_DONE();
 }
@@ -1189,6 +1200,7 @@ _readRangeTblEntry(void)
 		case RTE_RELATION:
 			READ_OID_FIELD(relid);
 			READ_CHAR_FIELD(relkind);
+			READ_NODE_FIELD(sample_info);
 			break;
 		case RTE_SUBQUERY:
 			READ_NODE_FIELD(subquery);
@@ -1269,6 +1281,8 @@ parseNodeString(void)
 		return_value = _readAlias();
 	else if (MATCH("RANGEVAR", 8))
 		return_value = _readRangeVar();
+	else if (MATCH("TABLESAMPLE", 11))
+		return_value = _readTableSampleInfo();
 	else if (MATCH("INTOCLAUSE", 10))
 		return_value = _readIntoClause();
 	else if (MATCH("VAR", 3))

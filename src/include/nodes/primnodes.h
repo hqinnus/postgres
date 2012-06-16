@@ -58,6 +58,26 @@ typedef enum OnCommitAction
 	ONCOMMIT_DROP				/* ON COMMIT DROP */
 } OnCommitAction;
 
+/*---------
+ * TableSampleMethod - defines the methods for tablesample query
+ *---------
+ */
+typedef enum TableSampleMethod
+{
+	SAMPLE_BERNOULLI,
+	SAMPLE_SYSTEM
+} TableSampleMethod;
+
+/*--------
+ * TableSampleInfo - information related to a tablesample query
+ *-------
+ */
+typedef struct TableSampleInfo
+{
+	NodeTag				type;
+	int					sample_percent;
+} TableSampleInfo;
+
 /*
  * RangeVar - range variable, used in FROM clauses
  *
@@ -65,6 +85,7 @@ typedef enum OnCommitAction
  * field is not used, and inhOpt shows whether to apply the operation
  * recursively to child tables.  In some contexts it is also useful to carry
  * a TEMP table indication here.
+ * Also support for TableSample.
  */
 typedef struct RangeVar
 {
@@ -77,6 +98,8 @@ typedef struct RangeVar
 	char		relpersistence; /* see RELPERSISTENCE_* in pg_class.h */
 	Alias	   *alias;			/* table alias & optional column aliases */
 	int			location;		/* token location, or -1 if unknown */
+
+	TableSampleInfo *sample_info; /* TABLESAMPLE clause, if any */
 } RangeVar;
 
 /*

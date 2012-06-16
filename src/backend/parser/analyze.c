@@ -414,6 +414,15 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	/* There can't be any outer WITH to worry about */
 	Assert(pstate->p_ctenamespace == NIL);
 
+	/*
+	 * This should be disallowed by the parser, but check anyway for
+	 * the sake of paranoia.
+	 */
+	if (stmt->relation->sample_info)
+		ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("TABLESAMPLE cannot be specified for INSERT")));
+
 	qry->commandType = CMD_INSERT;
 	pstate->p_is_insert = true;
 

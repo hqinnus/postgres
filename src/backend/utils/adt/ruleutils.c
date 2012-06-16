@@ -2173,6 +2173,7 @@ deparse_context_for(const char *aliasname, Oid relid)
 	rte = makeNode(RangeTblEntry);
 	rte->rtekind = RTE_RELATION;
 	rte->relid = relid;
+	rte->sample_info = NULL;
 	rte->relkind = RELKIND_RELATION;	/* no need for exactness here */
 	rte->eref = makeAlias(aliasname, NIL);
 	rte->inh = false;
@@ -6715,6 +6716,20 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 			 * gave as column aliases.
 			 */
 			get_from_clause_alias(rte->alias, rte, context);
+		}
+
+		/* SAMPLE METHOD and REPEATABLE support needs to be added later here */
+		if (rte->sample_info)
+		{
+			TableSampleInfo		*sample_info = rte->sample_info;
+			const char			*method_name;
+
+			Assert(rte->rtekind == RTE_RELATION);
+
+			method_name = "SYSTEM";
+
+			appendStringInfo(buf, " TABLESAMPLE %s (%d)",
+							 method_name, sample_info->sample_percent);
 		}
 	}
 	else if (IsA(jtnode, JoinExpr))

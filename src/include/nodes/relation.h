@@ -360,6 +360,10 @@ typedef struct PlannerInfo
  *					EquivalenceClasses)
  *		has_eclass_joins - flag that EquivalenceClass joins are possible
  *
+ * The next field will be set true if there is tablesample clause presense in
+ * the query, otherwise false;
+ *		has_table_sample - flag for tablesample clause
+ *
  * Note: Keeping a restrictinfo list in the RelOptInfo is useful only for
  * base rels, because for a join rel the set of clauses that are treated as
  * restrict clauses varies depending on which sub-relations we choose to join.
@@ -433,6 +437,9 @@ typedef struct RelOptInfo
 	List	   *joininfo;		/* RestrictInfo structures for join clauses
 								 * involving this rel */
 	bool		has_eclass_joins;		/* T means joininfo is incomplete */
+
+	/* used if there is tablesample clause */
+	bool		has_table_sample;
 } RelOptInfo;
 
 /*
@@ -700,6 +707,8 @@ typedef struct Path
 /* Macro for extracting a path's parameterization relids; beware double eval */
 #define PATH_REQ_OUTER(path)  \
 	((path)->param_info ? (path)->param_info->ppi_req_outer : (Relids) NULL)
+
+
 
 /*----------
  * IndexPath represents an index scan over a single index.

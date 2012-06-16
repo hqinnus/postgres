@@ -107,6 +107,7 @@ _equalRangeVar(const RangeVar *a, const RangeVar *b)
 	COMPARE_SCALAR_FIELD(relpersistence);
 	COMPARE_NODE_FIELD(alias);
 	COMPARE_LOCATION_FIELD(location);
+	COMPARE_NODE_FIELD(sample_info);
 
 	return true;
 }
@@ -773,6 +774,17 @@ _equalFromExpr(const FromExpr *a, const FromExpr *b)
 {
 	COMPARE_NODE_FIELD(fromlist);
 	COMPARE_NODE_FIELD(quals);
+
+	return true;
+}
+
+/*
+ * This is not complete yet.
+ */
+static bool
+_equalTableSampleInfo(TableSampleInfo *a, TableSampleInfo *b)
+{
+	COMPARE_SCALAR_FIELD(sample_percent);
 
 	return true;
 }
@@ -2248,6 +2260,7 @@ _equalRangeTblEntry(const RangeTblEntry *a, const RangeTblEntry *b)
 	COMPARE_SCALAR_FIELD(rtekind);
 	COMPARE_SCALAR_FIELD(relid);
 	COMPARE_SCALAR_FIELD(relkind);
+	COMPARE_NODE_FIELD(sample_info);
 	COMPARE_NODE_FIELD(subquery);
 	COMPARE_SCALAR_FIELD(security_barrier);
 	COMPARE_SCALAR_FIELD(jointype);
@@ -2605,6 +2618,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_JoinExpr:
 			retval = _equalJoinExpr(a, b);
+			break;
+		case T_TableSampleInfo:
+			retval = _equalTableSampleInfo(a, b);
 			break;
 
 			/*

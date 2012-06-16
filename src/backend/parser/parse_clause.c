@@ -190,6 +190,12 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 										relation->alias, inh, false);
 	pstate->p_target_rangetblentry = rte;
 
+	/*
+	 * Minor kludge: addRangeTableEntryForRelation() can't see the
+	 * TABLESAMPLE clause, so attach it to the new RTE manually.
+	 */
+	rte->sample_info = relation->sample_info;
+
 	/* assume new rte is at end */
 	rtindex = list_length(pstate->p_rtable);
 	Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
