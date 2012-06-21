@@ -391,6 +391,7 @@ _readTableSampleInfo(void)
 	READ_LOCALS(TableSampleInfo);
 
 	READ_INT_FIELD(sample_percent);
+	READ_ENUM_FIELD(sample_method, TableSampleMethod);
 
 	READ_DONE();
 }

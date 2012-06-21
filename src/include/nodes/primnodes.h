@@ -76,6 +76,7 @@ typedef struct TableSampleInfo
 {
 	NodeTag				type;
 	int					sample_percent;
+	TableSampleMethod	sample_method;
 } TableSampleInfo;
 
 /*

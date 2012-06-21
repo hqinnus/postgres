@@ -785,6 +785,7 @@ static bool
 _equalTableSampleInfo(TableSampleInfo *a, TableSampleInfo *b)
 {
 	COMPARE_SCALAR_FIELD(sample_percent);
+	COMPARE_SCALAR_FIELD(sample_method);
 
 	return true;
 }

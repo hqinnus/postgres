@@ -51,6 +51,13 @@ typedef struct HeapScanDescData
 	int			rs_mindex;		/* marked tuple's saved index */
 	int			rs_ntuples;		/* number of visible tuples on page */
 	OffsetNumber rs_vistuples[MaxHeapTuplesPerPage];	/* their offsets */
+
+	/* TableSample Bernoulli Vitter's Algo samples */
+	HeapTuple	*rs_samplerows;
+	int			rs_samplesize;
+	int			rs_curindex;
+	bool		rs_sampleinited;
+	int			targrows;
 }	HeapScanDescData;
 
 /*

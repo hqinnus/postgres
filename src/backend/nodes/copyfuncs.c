@@ -1834,6 +1834,7 @@ _copyTableSampleInfo(const TableSampleInfo *from)
 	TableSampleInfo *newnode = makeNode(TableSampleInfo);
 
 	COPY_SCALAR_FIELD(sample_percent);
+	COPY_SCALAR_FIELD(sample_method);
 
 	return newnode;
 }
