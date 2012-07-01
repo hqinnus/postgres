@@ -93,7 +93,7 @@ static void BlockSampler_Init(BernoulliSampler bs, BlockNumber nblocks,
 static bool BlockSampler_HasMore(BernoulliSampler bs);
 static BlockNumber BlockSampler_Next(BernoulliSampler bs);
 static void acquire_next_sampletup(HeapScanDesc scan, BernoulliSampler bs);
-static void acquire_sample_rows(HeapScanDesc scan, BernoulliSampler bs);
+static void acquire_bernoulli_sample(HeapScanDesc scan, BernoulliSampler bs);
 static double anl_random_fract(void);
 static double anl_init_selection_state(int n);
 static double anl_get_next_S(double t, int n, double *stateptr);
@@ -6078,13 +6078,19 @@ static void
 acquire_next_sampletup(HeapScanDesc scan, BernoulliSampler bs)
 {
 	HeapTuple		tuple = &(scan->rs_ctup);
+	HeapTuple		pass_tuple;
 
 	if(!scan->rs_sampleinited)
-		acquire_sample_rows(scan, bs);
+		acquire_bernoulli_sample(scan, bs);
 
 	if(scan->rs_curindex < scan->rs_samplesize)
 	{
-		tuple = scan->rs_samplerows[scan->rs_curindex++];
+		pass_tuple = heap_copytuple(scan->rs_samplerows[scan->rs_curindex]);
+		tuple->t_len = pass_tuple->t_len;
+		tuple->t_self = pass_tuple->t_self;
+		tuple->t_tableOid = pass_tuple->t_tableOid;
+		tuple->t_data = pass_tuple->t_data;
+		scan->rs_curindex++;
 	}
 	else
 	{
@@ -6098,20 +6104,24 @@ acquire_next_sampletup(HeapScanDesc scan, BernoulliSampler bs)
 
 
 static void
-acquire_sample_rows(HeapScanDesc scan, BernoulliSampler bs)
+acquire_bernoulli_sample(HeapScanDesc scan, BernoulliSampler bs)
 {
 	int			numrows = 0;	/* # rows now in reservoir */
 	double		samplerows = 0; /* total # rows collected */
-//	double		liverows = 0;	/* # live rows seen */
-//	double		deadrows = 0;	/* # dead rows seen */
+	double		liverows = 0;	/* # live rows seen */
+	double		deadrows = 0;	/* # dead rows seen */
 	double		rowstoskip = -1;	/* -1 means not set yet */
+	BlockNumber	totalblocks = scan->rs_nblocks;
+	TransactionId OldestXmin;
 	double		rstate;
 	int			targrows = scan->targrows;
-	BlockNumber	totalblocks = scan->rs_nblocks;
 	HeapTuple	*rows = scan->rs_samplerows;
-//	Relation onerel = scan->rs_rd;
+	Relation onerel = scan->rs_rd;
 
 	Assert(targrows > 0);
+
+	/* Need a cutoff xmin for HeapTupleSatisfiesVacuum */
+	OldestXmin = GetOldestXmin(onerel->rd_rel->relisshared, true);
 
 	/* Prepare for sampling block numbers */ 
 	BlockSampler_Init(bs, totalblocks, targrows);
@@ -6122,17 +6132,10 @@ acquire_sample_rows(HeapScanDesc scan, BernoulliSampler bs)
 	while (BlockSampler_HasMore(bs))
 	{
 		BlockNumber targblock = BlockSampler_Next(bs);
-		HeapTuple	tuple = &(scan->rs_ctup);
 		Buffer		targbuffer;
 		Page		targpage;
-//		OffsetNumber targoffset,
-//					maxoffset;
-		int			lines;
-		int			lineindex;
-		int			linesleft;
-		OffsetNumber lineoff;
-
-		vacuum_delay_point();
+		OffsetNumber targoffset,
+					maxoffset;
 
 		/*
 		 * We must maintain a pin on the target page's buffer to ensure that
@@ -6143,77 +6146,76 @@ acquire_sample_rows(HeapScanDesc scan, BernoulliSampler bs)
 		 * tuple, but since we aren't doing much work per tuple, the extra
 		 * lock traffic is probably better avoided.
 		 */
-		heapgetpage(scan, targblock);
-//		targbuffer = ReadBufferExtended(onerel, MAIN_FORKNUM, targblock,
-//										RBM_NORMAL, vac_strategy);
-//		LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
-//		targpage = BufferGetPage(targbuffer);
+		targbuffer = ReadBufferExtended(onerel, MAIN_FORKNUM, targblock,
+										RBM_NORMAL, scan->rs_strategy);
+		LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
+		targpage = BufferGetPage(targbuffer);
 
-		targpage = BufferGetPage(scan->rs_cbuf);
-//		maxoffset = PageGetMaxOffsetNumber(targpage);
-		lines = scan->rs_ntuples;
-		lineindex = 0;
+		maxoffset = PageGetMaxOffsetNumber(targpage);
 
-		linesleft = lines - lineindex;
-
-		while(linesleft > 0)
+		for (targoffset = FirstOffsetNumber; targoffset <= maxoffset; targoffset++)
 		{
-			lineoff = scan->rs_vistuples[lineindex];
-			ItemId itemid = PageGetItemId(targpage, lineoff);
-			Assert(ItemIdIsNormal(itemid));
+			ItemId itemid; 
+			HeapTupleData targtuple;
+			bool sample_it = false;
 
-			tuple->t_data = (HeapTupleHeader) PageGetItem((Page) targpage, itemid);
-			tuple->t_len = ItemIdGetLength(itemid);
-			ItemPointerSet(&(tuple->t_self), targblock, lineoff);
+			itemid = PageGetItemId(targpage, targoffset);
 
-//			if (sample_it)
-//			{
+			if (!ItemIdIsNormal(itemid))
+			{
+				if (ItemIdIsDead(itemid))
+					deadrows += 1;
+				continue;
+			}
+
+			ItemPointerSet(&targtuple.t_self, targblock, targoffset);
+
+			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
+			targtuple.t_len = ItemIdGetLength(itemid);
+
+			/*
+			 * The first targrows sample rows are simply copied into the
+			 * reservoir. Then we start replacing tuples in the sample
+			 * until we reach the end of the relation.	This algorithm is
+			 * from Jeff Vitter's paper (see full citation below). It
+			 * works by repeatedly computing the number of tuples to skip
+			 * before selecting a tuple, which replaces a randomly chosen
+			 * element of the reservoir (current set of tuples).  At all
+			 * times the reservoir is a true random sample of the tuples
+			 * we've passed over so far, so when we fall off the end of
+			 * the relation we're done.
+			 */
+			if (numrows < targrows)
+				rows[numrows++] = heap_copytuple(&targtuple);
+			else
+			{
 				/*
-				 * The first targrows sample rows are simply copied into the
-				 * reservoir. Then we start replacing tuples in the sample
-				 * until we reach the end of the relation.	This algorithm is
-				 * from Jeff Vitter's paper (see full citation below). It
-				 * works by repeatedly computing the number of tuples to skip
-				 * before selecting a tuple, which replaces a randomly chosen
-				 * element of the reservoir (current set of tuples).  At all
-				 * times the reservoir is a true random sample of the tuples
-				 * we've passed over so far, so when we fall off the end of
-				 * the relation we're done.
+				 * t in Vitter's paper is the number of records already
+				 * processed.  If we need to compute a new S value, we
+				 * must use the not-yet-incremented value of samplerows as
+				 * t.
 				 */
-				if (numrows < targrows)
-					rows[numrows++] = heap_copytuple(tuple);
-				else
+				if (rowstoskip < 0)
+					rowstoskip = anl_get_next_S(samplerows, targrows,
+												&rstate);
+
+				if (rowstoskip <= 0)
 				{
 					/*
-					 * t in Vitter's paper is the number of records already
-					 * processed.  If we need to compute a new S value, we
-					 * must use the not-yet-incremented value of samplerows as
-					 * t.
+					 * Found a suitable tuple, so save it, replacing one
+					 * old tuple at random
 					 */
-					if (rowstoskip < 0)
-						rowstoskip = anl_get_next_S(samplerows, targrows,
-													&rstate);
+					int			k = (int) (targrows * anl_random_fract());
 
-					if (rowstoskip <= 0)
-					{
-						/*
-						 * Found a suitable tuple, so save it, replacing one
-						 * old tuple at random
-						 */
-						int			k = (int) (targrows * anl_random_fract());
-
-						Assert(k >= 0 && k < targrows);
-						heap_freetuple(rows[k]);
-						rows[k] = heap_copytuple(tuple);
-					}
-
-					rowstoskip -= 1;
+					Assert(k >= 0 && k < targrows);
+					heap_freetuple(rows[k]);
+					rows[k] = heap_copytuple(&targtuple);
 				}
 
-				samplerows += 1;
-				--linesleft;
-				++lineindex;
-//			}
+				rowstoskip -= 1;
+			}
+
+			samplerows += 1;
 		}
 
 		/* Now release the lock and pin on the page */
@@ -6222,52 +6224,6 @@ acquire_sample_rows(HeapScanDesc scan, BernoulliSampler bs)
 
 	scan->rs_samplesize = numrows;
 	scan->rs_sampleinited = true;
-
-	/*
-	 * If we didn't find as many tuples as we wanted then we're done. No sort
-	 * is needed, since they're already in order.
-	 *
-	 * Otherwise we need to sort the collected tuples by position
-	 * (itempointer). It's not worth worrying about corner cases where the
-	 * tuples are already sorted.
-	 *
-	 * Looks not useful for tablesample
-	 */
-//	if (numrows == targrows)
-//		qsort((void *) rows, numrows, sizeof(HeapTuple), compare_rows);
-
-	/*
-	 * Estimate total numbers of rows in relation.	For live rows, use
-	 * vac_estimate_reltuples; for dead rows, we have no source of old
-	 * information, so we have to assume the density is the same in unseen
-	 * pages as in the pages we scanned.
-	 * 
-	 *
-	 * Not useful for tablesample
-	 */
-//	*totalrows = vac_estimate_reltuples(onerel, true,
-//										totalblocks,
-//										bs.m,
-//										liverows);
-//	if (bs.m > 0)
-//		*totaldeadrows = floor((deadrows / bs.m) * totalblocks + 0.5);
-//	else
-//		*totaldeadrows = 0.0;
-
-	/*
-	 * Emit some interesting relation info
-	 *
-	 *
-	 * Not useful for tablesample
-	 */
-//	ereport(elevel,
-//			(errmsg("\"%s\": scanned %d of %u pages, "
-//					"containing %.0f live rows and %.0f dead rows; "
-//					"%d rows in sample, %.0f estimated total rows",
-//					RelationGetRelationName(onerel),
-//					bs.m, totalblocks,
-//					liverows, deadrows,
-//					numrows, *totalrows)));
 
 	return;
 }
