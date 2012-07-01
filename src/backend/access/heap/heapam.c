@@ -1015,7 +1015,9 @@ get_rand_in_range(int a, int b)
 	 * number; since the high-order bits may contain more entropy
 	 * with more PRNGs, we should probably use those instead.
 	 */
-	return (random() % b) + a;
+	long rand = random();
+	printf("%l\n", rand);
+	return (rand % b) + a;
 }
 
 #if defined(DISABLE_COMPLEX_MACRO)
