@@ -1015,9 +1015,7 @@ get_rand_in_range(int a, int b)
 	 * number; since the high-order bits may contain more entropy
 	 * with more PRNGs, we should probably use those instead.
 	 */
-	long rand = random();
-	printf("%l\n", rand);
-	return (rand % b) + a;
+	return (random() % b) + a;
 }
 
 #if defined(DISABLE_COMPLEX_MACRO)
@@ -6110,8 +6108,6 @@ acquire_bernoulli_sample(HeapScanDesc scan, BernoulliSampler bs)
 {
 	int			numrows = 0;	/* # rows now in reservoir */
 	double		samplerows = 0; /* total # rows collected */
-	double		liverows = 0;	/* # live rows seen */
-	double		deadrows = 0;	/* # dead rows seen */
 	double		rowstoskip = -1;	/* -1 means not set yet */
 	BlockNumber	totalblocks = scan->rs_nblocks;
 	TransactionId OldestXmin;
@@ -6165,8 +6161,6 @@ acquire_bernoulli_sample(HeapScanDesc scan, BernoulliSampler bs)
 
 			if (!ItemIdIsNormal(itemid))
 			{
-				if (ItemIdIsDead(itemid))
-					deadrows += 1;
 				continue;
 			}
 
