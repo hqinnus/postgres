@@ -6154,7 +6154,7 @@ acquire_bernoulli_sample(HeapScanDesc scan)
 
 		for (targoffset = FirstOffsetNumber; targoffset <= maxoffset; targoffset++)
 		{
-			ItemId itemid;
+			ItemId itemid; 
 			HeapTupleData targtuple;
 
 			itemid = PageGetItemId(targpage, targoffset);
