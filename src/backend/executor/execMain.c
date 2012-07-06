@@ -225,7 +225,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
  *		except to start up/shut down the destination.  Otherwise,
  *		we retrieve up to 'count' tuples in the specified direction.
  *
- *		Note: count = 0 is interpreted as no pocrntal limit, i.e., run to
+ *		Note: count = 0 is interpreted as no portal limit, i.e., run to
  *		completion.
  *
  *		There is no return value, but output tuples (if any) are sent to
