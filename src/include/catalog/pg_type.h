@@ -47,7 +47,7 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71) BKI_SCHEMA_MACRO
 	 * "varlena" type (one that has a length word), -2 to indicate a
 	 * null-terminated C string.
 	 */
-	int2		typlen;
+	int16		typlen;
 
 	/*
 	 * typbyval determines whether internal Postgres routines pass a value of
@@ -61,9 +61,8 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71) BKI_SCHEMA_MACRO
 
 	/*
 	 * typtype is 'b' for a base type, 'c' for a composite type (e.g., a
-	 * table's rowtype), 'd' for a domain, 'e' for an enum type,
-	 * 'p' for a pseudo-type, or 'r' for a range type.
-	 * (Use the TYPTYPE macros below.)
+	 * table's rowtype), 'd' for a domain, 'e' for an enum type, 'p' for a
+	 * pseudo-type, or 'r' for a range type. (Use the TYPTYPE macros below.)
 	 *
 	 * If typtype is 'c', typrelid is the OID of the class' entry in pg_class.
 	 */
@@ -186,13 +185,13 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71) BKI_SCHEMA_MACRO
 	 * type (-1 if base type does not use a typmod).  -1 if this type is not a
 	 * domain.
 	 */
-	int4		typtypmod;
+	int32		typtypmod;
 
 	/*
 	 * typndims is the declared number of dimensions for an array domain type
 	 * (i.e., typbasetype is an array type).  Otherwise zero.
 	 */
-	int4		typndims;
+	int32		typndims;
 
 	/*
 	 * Collation: 0 if type cannot use collations, DEFAULT_COLLATION_OID for
@@ -201,6 +200,7 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71) BKI_SCHEMA_MACRO
 	Oid			typcollation;
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
+
 	/*
 	 * If typdefaultbin is not NULL, it is the nodeToString representation of
 	 * a default expression for the type.  Currently this is only used for
@@ -650,6 +650,8 @@ DATA(insert OID = 2278 ( void			PGNSP PGUID  4 t p P f t \054 0 0 0 void_in void
 #define VOIDOID			2278
 DATA(insert OID = 2279 ( trigger		PGNSP PGUID  4 t p P f t \054 0 0 0 trigger_in trigger_out - - - - - i p f 0 -1 0 0 _null_ _null_ _null_ ));
 #define TRIGGEROID		2279
+DATA(insert OID = 3838 ( event_trigger		PGNSP PGUID  4 t p P f t \054 0 0 0 event_trigger_in event_trigger_out - - - - - i p f 0 -1 0 0 _null_ _null_ _null_ ));
+#define EVTTRIGGEROID		3838
 DATA(insert OID = 2280 ( language_handler	PGNSP PGUID  4 t p P f t \054 0 0 0 language_handler_in language_handler_out - - - - - i p f 0 -1 0 0 _null_ _null_ _null_ ));
 #define LANGUAGE_HANDLEROID		2280
 DATA(insert OID = 2281 ( internal		PGNSP PGUID  SIZEOF_POINTER t p P f t \054 0 0 0 internal_in internal_out - - - - - ALIGNOF_POINTER p f 0 -1 0 0 _null_ _null_ _null_ ));

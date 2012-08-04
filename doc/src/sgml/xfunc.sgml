@@ -1739,6 +1739,13 @@ PG_MODULE_MAGIC;
 /* 4-byte integer, passed by value */
 typedef int int4;
 </programlisting>
+
+     (The actual PostgreSQL C code calls this type <type>int32</type>, because
+     it is a convention in C that <type>int<replaceable>XX</replaceable></type>
+     means <replaceable>XX</replaceable> <emphasis>bits</emphasis>.  Note
+     therefore also that the C type <type>int8</type> is 1 byte in size.  The
+     SQL type <type>int8</type> is called <type>int64</type> in C.  See also
+     <xref linkend="xfunc-c-type-table">.)
     </para>
 
     <para>
@@ -1768,7 +1775,7 @@ typedef struct
      Finally, all variable-length types must also be  passed
      by  reference.   All  variable-length  types must begin
      with an opaque length field of exactly 4 bytes, which will be set
-     by SET_VARSIZE; never set this field directly! All data to
+     by <symbol>SET_VARSIZE</symbol>; never set this field directly! All data to
      be  stored within that type must be located in the memory
      immediately  following  that  length  field.   The
      length field contains the total length of the structure,
@@ -1801,7 +1808,7 @@ typedef struct
 
 <programlisting>
 typedef struct {
-    int4 length;
+    int32 length;
     char data[1];
 } text;
 </programlisting>
@@ -1913,7 +1920,7 @@ memcpy(destination->data, buffer, 40);
         </row>
         <row>
          <entry><type>smallint</type> (<type>int2</type>)</entry>
-         <entry><type>int2</type> or <type>int16</type></entry>
+         <entry><type>int16</type></entry>
          <entry><filename>postgres.h</filename></entry>
         </row>
         <row>
@@ -1923,7 +1930,7 @@ memcpy(destination->data, buffer, 40);
         </row>
         <row>
          <entry><type>integer</type> (<type>int4</type>)</entry>
-         <entry><type>int4</type> or <type>int32</type></entry>
+         <entry><type>int32</type></entry>
          <entry><filename>postgres.h</filename></entry>
         </row>
         <row>

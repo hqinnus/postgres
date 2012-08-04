@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "access/reloptions.h"
+#include "access/sysattr.h"
 #include "catalog/pg_foreign_table.h"
 #include "commands/copy.h"
 #include "commands/defrem.h"
@@ -29,6 +30,7 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
+#include "optimizer/var.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
@@ -109,17 +111,17 @@ PG_FUNCTION_INFO_V1(file_fdw_validator);
  * FDW callback routines
  */
 static void fileGetForeignRelSize(PlannerInfo *root,
-								  RelOptInfo *baserel,
-								  Oid foreigntableid);
+					  RelOptInfo *baserel,
+					  Oid foreigntableid);
 static void fileGetForeignPaths(PlannerInfo *root,
-								RelOptInfo *baserel,
-								Oid foreigntableid);
+					RelOptInfo *baserel,
+					Oid foreigntableid);
 static ForeignScan *fileGetForeignPlan(PlannerInfo *root,
-									   RelOptInfo *baserel,
-									   Oid foreigntableid,
-									   ForeignPath *best_path,
-									   List *tlist,
-									   List *scan_clauses);
+				   RelOptInfo *baserel,
+				   Oid foreigntableid,
+				   ForeignPath *best_path,
+				   List *tlist,
+				   List *scan_clauses);
 static void fileExplainForeignScan(ForeignScanState *node, ExplainState *es);
 static void fileBeginForeignScan(ForeignScanState *node, int eflags);
 static TupleTableSlot *fileIterateForeignScan(ForeignScanState *node);
@@ -136,12 +138,15 @@ static bool is_valid_option(const char *option, Oid context);
 static void fileGetOptions(Oid foreigntableid,
 			   char **filename, List **other_options);
 static List *get_file_fdw_attribute_options(Oid relid);
+static bool check_selective_binary_conversion(RelOptInfo *baserel,
+											  Oid foreigntableid,
+											  List **columns);
 static void estimate_size(PlannerInfo *root, RelOptInfo *baserel,
 			  FileFdwPlanState *fdw_private);
 static void estimate_costs(PlannerInfo *root, RelOptInfo *baserel,
 			   FileFdwPlanState *fdw_private,
 			   Cost *startup_cost, Cost *total_cost);
-static int	file_acquire_sample_rows(Relation onerel, int elevel,
+static int file_acquire_sample_rows(Relation onerel, int elevel,
 						 HeapTuple *rows, int targrows,
 						 double *totalrows, double *totaldeadrows);
 
@@ -180,7 +185,7 @@ file_fdw_validator(PG_FUNCTION_ARGS)
 	List	   *options_list = untransformRelOptions(PG_GETARG_DATUM(0));
 	Oid			catalog = PG_GETARG_OID(1);
 	char	   *filename = NULL;
-	DefElem	   *force_not_null = NULL;
+	DefElem    *force_not_null = NULL;
 	List	   *other_options = NIL;
 	ListCell   *cell;
 
@@ -233,7 +238,7 @@ file_fdw_validator(PG_FUNCTION_ARGS)
 					 buf.len > 0
 					 ? errhint("Valid options in this context are: %s",
 							   buf.data)
-					 : errhint("There are no valid options in this context.")));
+				  : errhint("There are no valid options in this context.")));
 		}
 
 		/*
@@ -393,13 +398,13 @@ get_file_fdw_attribute_options(Oid relid)
 		options = GetForeignColumnOptions(relid, attnum);
 		foreach(lc, options)
 		{
-			DefElem	   *def = (DefElem *) lfirst(lc);
+			DefElem    *def = (DefElem *) lfirst(lc);
 
 			if (strcmp(def->defname, "force_not_null") == 0)
 			{
 				if (defGetBoolean(def))
 				{
-					char   *attname = pstrdup(NameStr(attr->attname));
+					char	   *attname = pstrdup(NameStr(attr->attname));
 
 					fnncolumns = lappend(fnncolumns, makeString(attname));
 				}
@@ -429,8 +434,8 @@ fileGetForeignRelSize(PlannerInfo *root,
 	FileFdwPlanState *fdw_private;
 
 	/*
-	 * Fetch options.  We only need filename at this point, but we might
-	 * as well get everything and not need to re-fetch it later in planning.
+	 * Fetch options.  We only need filename at this point, but we might as
+	 * well get everything and not need to re-fetch it later in planning.
 	 */
 	fdw_private = (FileFdwPlanState *) palloc(sizeof(FileFdwPlanState));
 	fileGetOptions(foreigntableid,
@@ -457,24 +462,38 @@ fileGetForeignPaths(PlannerInfo *root,
 	FileFdwPlanState *fdw_private = (FileFdwPlanState *) baserel->fdw_private;
 	Cost		startup_cost;
 	Cost		total_cost;
+	List	   *columns;
+	List	   *coptions = NIL;
+
+	/* Decide whether to selectively perform binary conversion */
+	if (check_selective_binary_conversion(baserel,
+										  foreigntableid,
+										  &columns))
+		coptions = list_make1(makeDefElem("convert_selectively",
+										  (Node *) columns));
 
 	/* Estimate costs */
 	estimate_costs(root, baserel, fdw_private,
 				   &startup_cost, &total_cost);
 
-	/* Create a ForeignPath node and add it as only possible path */
+	/*
+	 * Create a ForeignPath node and add it as only possible path.  We use the
+	 * fdw_private list of the path to carry the convert_selectively option;
+	 * it will be propagated into the fdw_private list of the Plan node.
+	 */
 	add_path(baserel, (Path *)
 			 create_foreignscan_path(root, baserel,
 									 baserel->rows,
 									 startup_cost,
 									 total_cost,
-									 NIL, /* no pathkeys */
-									 NULL, /* no outer rel either */
-									 NIL)); /* no fdw_private data */
+									 NIL,		/* no pathkeys */
+									 NULL,		/* no outer rel either */
+									 coptions));
 
 	/*
 	 * If data file was sorted, and we knew it somehow, we could insert
-	 * appropriate pathkeys into the ForeignPath node to tell the planner that.
+	 * appropriate pathkeys into the ForeignPath node to tell the planner
+	 * that.
 	 */
 }
 
@@ -505,8 +524,8 @@ fileGetForeignPlan(PlannerInfo *root,
 	return make_foreignscan(tlist,
 							scan_clauses,
 							scan_relid,
-							NIL, /* no expressions to evaluate */
-							NIL); /* no private state either */
+							NIL,	/* no expressions to evaluate */
+							best_path->fdw_private);
 }
 
 /*
@@ -543,6 +562,7 @@ fileExplainForeignScan(ForeignScanState *node, ExplainState *es)
 static void
 fileBeginForeignScan(ForeignScanState *node, int eflags)
 {
+	ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
 	char	   *filename;
 	List	   *options;
 	CopyState	cstate;
@@ -557,6 +577,9 @@ fileBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Fetch options of foreign table */
 	fileGetOptions(RelationGetRelid(node->ss.ss_currentRelation),
 				   &filename, &options);
+
+	/* Add any options from the plan (currently only convert_selectively) */
+	options = list_concat(options, plan->fdw_private);
 
 	/*
 	 * Create CopyState from FDW options.  We always acquire all columns, so
@@ -665,14 +688,14 @@ fileAnalyzeForeignTable(Relation relation,
 {
 	char	   *filename;
 	List	   *options;
-	struct stat	stat_buf;
+	struct stat stat_buf;
 
 	/* Fetch options of foreign table */
 	fileGetOptions(RelationGetRelid(relation), &filename, &options);
 
 	/*
-	 * Get size of the file.  (XXX if we fail here, would it be better to
-	 * just return false to skip analyzing the table?)
+	 * Get size of the file.  (XXX if we fail here, would it be better to just
+	 * return false to skip analyzing the table?)
 	 */
 	if (stat(filename, &stat_buf) < 0)
 		ereport(ERROR,
@@ -689,6 +712,125 @@ fileAnalyzeForeignTable(Relation relation,
 		*totalpages = 1;
 
 	*func = file_acquire_sample_rows;
+
+	return true;
+}
+
+/*
+ * check_selective_binary_conversion
+ *
+ * Check to see if it's useful to convert only a subset of the file's columns
+ * to binary.  If so, construct a list of the column names to be converted,
+ * return that at *columns, and return TRUE.  (Note that it's possible to
+ * determine that no columns need be converted, for instance with a COUNT(*)
+ * query.  So we can't use returning a NIL list to indicate failure.)
+ */
+static bool
+check_selective_binary_conversion(RelOptInfo *baserel,
+								  Oid foreigntableid,
+								  List **columns)
+{
+	ForeignTable *table;
+	ListCell   *lc;
+	Relation	rel;
+	TupleDesc	tupleDesc;
+	AttrNumber	attnum;
+	Bitmapset  *attrs_used = NULL;
+	bool		has_wholerow = false;
+	int			numattrs;
+	int			i;
+
+	*columns = NIL;				/* default result */
+
+	/*
+	 * Check format of the file.  If binary format, this is irrelevant.
+	 */
+	table = GetForeignTable(foreigntableid);
+	foreach(lc, table->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "format") == 0)
+		{
+			char	   *format = defGetString(def);
+
+			if (strcmp(format, "binary") == 0)
+				return false;
+			break;
+		}
+	}
+
+	/* Collect all the attributes needed for joins or final output. */
+	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid,
+				   &attrs_used);
+
+	/* Add all the attributes used by restriction clauses. */
+	foreach(lc, baserel->baserestrictinfo)
+	{
+		RestrictInfo   *rinfo = (RestrictInfo *) lfirst(lc);
+
+		pull_varattnos((Node *) rinfo->clause, baserel->relid,
+					   &attrs_used);
+	}
+
+	/* Convert attribute numbers to column names. */
+	rel = heap_open(foreigntableid, AccessShareLock);
+	tupleDesc = RelationGetDescr(rel);
+
+	while ((attnum = bms_first_member(attrs_used)) >= 0)
+	{
+		/* Adjust for system attributes. */
+		attnum += FirstLowInvalidHeapAttributeNumber;
+
+		if (attnum == 0)
+		{
+			has_wholerow = true;
+			break;
+		}
+
+		/* Ignore system attributes. */
+		if (attnum < 0)
+			continue;
+
+		/* Get user attributes. */
+		if (attnum > 0)
+		{
+			Form_pg_attribute attr = tupleDesc->attrs[attnum - 1];
+			char	   *attname = NameStr(attr->attname);
+
+			/* Skip dropped attributes (probably shouldn't see any here). */
+			if (attr->attisdropped)
+				continue;
+			*columns = lappend(*columns, makeString(pstrdup(attname)));
+		}
+	}
+
+	/* Count non-dropped user attributes while we have the tupdesc. */
+	numattrs = 0;
+	for (i = 0; i < tupleDesc->natts; i++)
+	{
+		Form_pg_attribute attr = tupleDesc->attrs[i];
+
+		if (attr->attisdropped)
+			continue;
+		numattrs++;
+	}
+
+	heap_close(rel, AccessShareLock);
+
+	/* If there's a whole-row reference, fail: we need all the columns. */
+	if (has_wholerow)
+	{
+		*columns = NIL;
+		return false;
+	}
+
+	/* If all the user attributes are needed, fail. */
+	if (numattrs == list_length(*columns))
+	{
+		*columns = NIL;
+		return false;
+	}
 
 	return true;
 }
@@ -746,7 +888,7 @@ estimate_size(PlannerInfo *root, RelOptInfo *baserel,
 		 * planner's idea of the relation width; which is bogus if not all
 		 * columns are being read, not to mention that the text representation
 		 * of a row probably isn't the same size as its internal
-		 * representation.  Possibly we could do something better, but the
+		 * representation.	Possibly we could do something better, but the
 		 * real answer to anyone who complains is "ANALYZE" ...
 		 */
 		int			tuple_width;
@@ -811,7 +953,7 @@ estimate_costs(PlannerInfo *root, RelOptInfo *baserel,
  * which must have at least targrows entries.
  * The actual number of rows selected is returned as the function result.
  * We also count the total number of rows in the file and return it into
- * *totalrows.  Note that *totaldeadrows is always set to 0.
+ * *totalrows.	Note that *totaldeadrows is always set to 0.
  *
  * Note that the returned list of rows is not always in order by physical
  * position in the file.  Therefore, correlation estimates derived later
@@ -824,7 +966,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 						 double *totalrows, double *totaldeadrows)
 {
 	int			numrows = 0;
-	double		rowstoskip = -1; /* -1 means not set yet */
+	double		rowstoskip = -1;	/* -1 means not set yet */
 	double		rstate;
 	TupleDesc	tupDesc;
 	Datum	   *values;
@@ -853,8 +995,8 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 	cstate = BeginCopyFrom(onerel, filename, NIL, options);
 
 	/*
-	 * Use per-tuple memory context to prevent leak of memory used to read rows
-	 * from the file with Copy routines.
+	 * Use per-tuple memory context to prevent leak of memory used to read
+	 * rows from the file with Copy routines.
 	 */
 	tupcontext = AllocSetContextCreate(CurrentMemoryContext,
 									   "file_fdw temporary context",
@@ -912,10 +1054,10 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 			if (rowstoskip <= 0)
 			{
 				/*
-				 * Found a suitable tuple, so save it, replacing one
-				 * old tuple at random
+				 * Found a suitable tuple, so save it, replacing one old tuple
+				 * at random
 				 */
-				int		k = (int) (targrows * anl_random_fract());
+				int			k = (int) (targrows * anl_random_fract());
 
 				Assert(k >= 0 && k < targrows);
 				heap_freetuple(rows[k]);

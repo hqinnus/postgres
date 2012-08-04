@@ -162,18 +162,20 @@ pg_cancel_backend(PG_FUNCTION_ARGS)
 }
 
 /*
- * Signal to terminate a backend process.  Only allowed by superuser.
+ * Signal to terminate a backend process.  This is allowed if you are superuser
+ * or have the same role as the process being terminated.
  */
 Datum
 pg_terminate_backend(PG_FUNCTION_ARGS)
 {
-	if (!superuser())
+	int			r = pg_signal_backend(PG_GETARG_INT32(0), SIGTERM);
+
+	if (r == SIGNAL_BACKEND_NOPERMISSION)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			 errmsg("must be superuser to terminate other server processes"),
-				 errhint("You can cancel your own processes with pg_cancel_backend().")));
+				 (errmsg("must be superuser or have the same role to terminate backends running in other server processes"))));
 
-	PG_RETURN_BOOL(pg_signal_backend(PG_GETARG_INT32(0), SIGTERM) == SIGNAL_BACKEND_SUCCESS);
+	PG_RETURN_BOOL(r == SIGNAL_BACKEND_SUCCESS);
 }
 
 /*
@@ -329,14 +331,14 @@ pg_tablespace_databases(PG_FUNCTION_ARGS)
 Datum
 pg_tablespace_location(PG_FUNCTION_ARGS)
 {
-	Oid		tablespaceOid = PG_GETARG_OID(0);
-	char	sourcepath[MAXPGPATH];
-	char	targetpath[MAXPGPATH];
-	int		rllen;
+	Oid			tablespaceOid = PG_GETARG_OID(0);
+	char		sourcepath[MAXPGPATH];
+	char		targetpath[MAXPGPATH];
+	int			rllen;
 
 	/*
 	 * It's useful to apply this function to pg_class.reltablespace, wherein
-	 * zero means "the database's default tablespace".  So, rather than
+	 * zero means "the database's default tablespace".	So, rather than
 	 * throwing an error for zero, we choose to assume that's what is meant.
 	 */
 	if (tablespaceOid == InvalidOid)
@@ -350,9 +352,10 @@ pg_tablespace_location(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(cstring_to_text(""));
 
 #if defined(HAVE_READLINK) || defined(WIN32)
+
 	/*
-	 * Find the location of the tablespace by reading the symbolic link that is
-	 * in pg_tblspc/<oid>.
+	 * Find the location of the tablespace by reading the symbolic link that
+	 * is in pg_tblspc/<oid>.
 	 */
 	snprintf(sourcepath, sizeof(sourcepath), "pg_tblspc/%u", tablespaceOid);
 
@@ -510,8 +513,8 @@ pg_typeof(PG_FUNCTION_ARGS)
 Datum
 pg_collation_for(PG_FUNCTION_ARGS)
 {
-	Oid typeid;
-	Oid collid;
+	Oid			typeid;
+	Oid			collid;
 
 	typeid = get_fn_expr_argtype(fcinfo->flinfo, 0);
 	if (!typeid)

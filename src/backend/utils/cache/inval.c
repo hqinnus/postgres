@@ -174,7 +174,7 @@ static int	maxSharedInvalidMessagesArray;
  * assumes there won't be very many of these at once; could improve if needed.
  */
 
-#define MAX_SYSCACHE_CALLBACKS 20
+#define MAX_SYSCACHE_CALLBACKS 32
 #define MAX_RELCACHE_CALLBACKS 5
 
 static struct SYSCACHECALLBACK
@@ -820,7 +820,7 @@ ProcessCommittedInvalidationMessages(SharedInvalidationMessage *msgs,
  * since they'll not have seen our changed tuples anyway.  We can forget
  * about CurrentCmdInvalidMsgs too, since those changes haven't touched
  * the caches yet.
- * 
+ *
  * In any case, reset the various lists to empty.  We need not physically
  * free memory here, since TopTransactionContext is about to be emptied
  * anyway.

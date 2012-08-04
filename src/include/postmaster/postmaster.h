@@ -33,25 +33,27 @@ extern bool restart_after_crash;
 #ifdef WIN32
 extern HANDLE PostmasterHandle;
 #else
-extern int postmaster_alive_fds[2];
+extern int	postmaster_alive_fds[2];
+
 /*
  * Constants that represent which of postmaster_alive_fds is held by
  * postmaster, and which is used in children to check for postmaster death.
  */
-#define POSTMASTER_FD_WATCH		0	/* used in children to check for postmaster death */
-#define POSTMASTER_FD_OWN		1	/* kept open by postmaster only */
+#define POSTMASTER_FD_WATCH		0		/* used in children to check for
+										 * postmaster death */
+#define POSTMASTER_FD_OWN		1		/* kept open by postmaster only */
 #endif
 
 extern const char *progname;
 
-extern int	PostmasterMain(int argc, char *argv[]);
+extern void PostmasterMain(int argc, char *argv[]) __attribute__((noreturn));
 extern void ClosePostmasterPorts(bool am_syslogger);
 
 extern int	MaxLivePostmasterChildren(void);
 
 #ifdef EXEC_BACKEND
 extern pid_t postmaster_forkexec(int argc, char *argv[]);
-extern int	SubPostmasterMain(int argc, char *argv[]);
+extern void	SubPostmasterMain(int argc, char *argv[]) __attribute__((noreturn));
 
 extern Size ShmemBackendArraySize(void);
 extern void ShmemBackendArrayAllocation(void);

@@ -113,7 +113,7 @@ static Expr *simplify_function(Oid funcid,
 				  bool process_args, bool allow_non_const,
 				  eval_const_expressions_context *context);
 static List *expand_function_arguments(List *args, Oid result_type,
-									   HeapTuple func_tuple);
+						  HeapTuple func_tuple);
 static List *reorder_function_arguments(List *args, HeapTuple func_tuple);
 static List *add_function_defaults(List *args, HeapTuple func_tuple);
 static List *fetch_function_defaults(HeapTuple func_tuple);
@@ -181,7 +181,7 @@ make_opclause(Oid opno, Oid opresulttype, bool opretset,
 Node *
 get_leftop(const Expr *clause)
 {
-	const OpExpr	   *expr = (const OpExpr *) clause;
+	const OpExpr *expr = (const OpExpr *) clause;
 
 	if (expr->args != NIL)
 		return linitial(expr->args);
@@ -198,7 +198,7 @@ get_leftop(const Expr *clause)
 Node *
 get_rightop(const Expr *clause)
 {
-	const OpExpr	   *expr = (const OpExpr *) clause;
+	const OpExpr *expr = (const OpExpr *) clause;
 
 	if (list_length(expr->args) >= 2)
 		return lsecond(expr->args);
@@ -661,10 +661,12 @@ find_window_functions_walker(Node *node, WindowFuncLists *lists)
 
 /*
  * expression_returns_set_rows
- *	  Estimate the number of rows in a set result.
+ *	  Estimate the number of rows returned by a set-returning expression.
+ *	  The result is 1 if there are no set-returning functions.
  *
  * We use the product of the rowcount estimates of all the functions in
- * the given tree.	The result is 1 if there are no set-returning functions.
+ * the given tree (this corresponds to the behavior of ExecMakeFunctionResult
+ * for nested set-returning functions).
  *
  * Note: keep this in sync with expression_returns_set() in nodes/nodeFuncs.c.
  */
@@ -674,7 +676,7 @@ expression_returns_set_rows(Node *clause)
 	double		result = 1;
 
 	(void) expression_returns_set_rows_walker(clause, &result);
-	return result;
+	return clamp_row_est(result);
 }
 
 static bool
@@ -734,6 +736,40 @@ expression_returns_set_rows_walker(Node *node, double *count)
 
 	return expression_tree_walker(node, expression_returns_set_rows_walker,
 								  (void *) count);
+}
+
+/*
+ * tlist_returns_set_rows
+ *	  Estimate the number of rows returned by a set-returning targetlist.
+ *	  The result is 1 if there are no set-returning functions.
+ *
+ * Here, the result is the largest rowcount estimate of any of the tlist's
+ * expressions, not the product as you would get from naively applying
+ * expression_returns_set_rows() to the whole tlist.  The behavior actually
+ * implemented by ExecTargetList produces a number of rows equal to the least
+ * common multiple of the expression rowcounts, so that the product would be
+ * a worst-case estimate that is typically not realistic.  Taking the max as
+ * we do here is a best-case estimate that might not be realistic either,
+ * but it's probably closer for typical usages.  We don't try to compute the
+ * actual LCM because we're working with very approximate estimates, so their
+ * LCM would be unduly noisy.
+ */
+double
+tlist_returns_set_rows(List *tlist)
+{
+	double		result = 1;
+	ListCell   *lc;
+
+	foreach(lc, tlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+		double		colresult;
+
+		colresult = expression_returns_set_rows((Node *) tle->expr);
+		if (result < colresult)
+			result = colresult;
+	}
+	return result;
 }
 
 
@@ -1128,15 +1164,15 @@ contain_nonstrict_functions_walker(Node *node, void *context)
 }
 
 /*****************************************************************************
- *        Check clauses for non-leakproof functions
+ *		  Check clauses for non-leakproof functions
  *****************************************************************************/
 
 /*
  * contain_leaky_functions
- *      Recursively search for leaky functions within a clause.
+ *		Recursively search for leaky functions within a clause.
  *
  * Returns true if any function call with side-effect may be present in the
- * clause.  Qualifiers from outside the a security_barrier view should not
+ * clause.	Qualifiers from outside the a security_barrier view should not
  * be pushed down into the view, lest the contents of tuples intended to be
  * filtered out be revealed via side effects.
  */
@@ -1155,8 +1191,8 @@ contain_leaky_functions_walker(Node *node, void *context)
 	switch (nodeTag(node))
 	{
 		case T_Var:
-        case T_Const:
-        case T_Param:
+		case T_Const:
+		case T_Param:
 		case T_ArrayExpr:
 		case T_NamedArgExpr:
 		case T_BoolExpr:
@@ -1168,6 +1204,7 @@ contain_leaky_functions_walker(Node *node, void *context)
 		case T_NullTest:
 		case T_BooleanTest:
 		case T_List:
+
 			/*
 			 * We know these node types don't contain function calls; but
 			 * something further down in the node tree might.
@@ -1176,7 +1213,7 @@ contain_leaky_functions_walker(Node *node, void *context)
 
 		case T_FuncExpr:
 			{
-				FuncExpr *expr = (FuncExpr *) node;
+				FuncExpr   *expr = (FuncExpr *) node;
 
 				if (!get_func_leakproof(expr->funcid))
 					return true;
@@ -1187,7 +1224,7 @@ contain_leaky_functions_walker(Node *node, void *context)
 		case T_DistinctExpr:	/* struct-equivalent to OpExpr */
 		case T_NullIfExpr:		/* struct-equivalent to OpExpr */
 			{
-				OpExpr *expr = (OpExpr *) node;
+				OpExpr	   *expr = (OpExpr *) node;
 
 				set_opfuncid(expr);
 				if (!get_func_leakproof(expr->opfuncid))
@@ -1208,11 +1245,11 @@ contain_leaky_functions_walker(Node *node, void *context)
 		case T_CoerceViaIO:
 			{
 				CoerceViaIO *expr = (CoerceViaIO *) node;
-				Oid		funcid;
-				Oid		ioparam;
-				bool	varlena;
+				Oid			funcid;
+				Oid			ioparam;
+				bool		varlena;
 
-				getTypeInputInfo(exprType((Node *)expr->arg),
+				getTypeInputInfo(exprType((Node *) expr->arg),
 								 &funcid, &ioparam);
 				if (!get_func_leakproof(funcid))
 					return true;
@@ -1226,11 +1263,11 @@ contain_leaky_functions_walker(Node *node, void *context)
 		case T_ArrayCoerceExpr:
 			{
 				ArrayCoerceExpr *expr = (ArrayCoerceExpr *) node;
-				Oid		funcid;
-				Oid		ioparam;
-				bool	varlena;
+				Oid			funcid;
+				Oid			ioparam;
+				bool		varlena;
 
-				getTypeInputInfo(exprType((Node *)expr->arg),
+				getTypeInputInfo(exprType((Node *) expr->arg),
 								 &funcid, &ioparam);
 				if (!get_func_leakproof(funcid))
 					return true;
@@ -1247,7 +1284,7 @@ contain_leaky_functions_walker(Node *node, void *context)
 
 				foreach(opid, rcexpr->opnos)
 				{
-					Oid		funcid = get_opcode(lfirst_oid(opid));
+					Oid			funcid = get_opcode(lfirst_oid(opid));
 
 					if (!get_func_leakproof(funcid))
 						return true;
@@ -1256,6 +1293,7 @@ contain_leaky_functions_walker(Node *node, void *context)
 			break;
 
 		default:
+
 			/*
 			 * If we don't recognize the node tag, assume it might be leaky.
 			 * This prevents an unexpected security hole if someone adds a new
@@ -2683,7 +2721,7 @@ eval_const_expressions_mutator(Node *node,
 												-1,
 												InvalidOid,
 												sizeof(Oid),
-												ObjectIdGetDatum(intypioparam),
+											  ObjectIdGetDatum(intypioparam),
 												false,
 												true),
 									  makeConst(INT4OID,
@@ -2812,13 +2850,13 @@ eval_const_expressions_mutator(Node *node,
 				 *		TRUE: drop all remaining alternatives
 				 * If the first non-FALSE alternative is a constant TRUE,
 				 * we can simplify the entire CASE to that alternative's
-				 * expression.  If there are no non-FALSE alternatives,
+				 * expression.	If there are no non-FALSE alternatives,
 				 * we simplify the entire CASE to the default result (ELSE).
 				 *
 				 * If we have a simple-form CASE with constant test
 				 * expression, we substitute the constant value for contained
 				 * CaseTestExpr placeholder nodes, so that we have the
-				 * opportunity to reduce constant test conditions.  For
+				 * opportunity to reduce constant test conditions.	For
 				 * example this allows
 				 *		CASE 0 WHEN 0 THEN 1 ELSE 1/0 END
 				 * to reduce to 1 rather than drawing a divide-by-0 error.
@@ -3581,12 +3619,12 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 	 * deliver a constant result, use a transform function to generate a
 	 * substitute node tree, or expand in-line the body of the function
 	 * definition (which only works for simple SQL-language functions, but
-	 * that is a common case).  Each case needs access to the function's
+	 * that is a common case).	Each case needs access to the function's
 	 * pg_proc tuple, so fetch it just once.
 	 *
 	 * Note: the allow_non_const flag suppresses both the second and third
-	 * strategies; so if !allow_non_const, simplify_function can only return
-	 * a Const or NULL.  Argument-list rewriting happens anyway, though.
+	 * strategies; so if !allow_non_const, simplify_function can only return a
+	 * Const or NULL.  Argument-list rewriting happens anyway, though.
 	 */
 	func_tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 	if (!HeapTupleIsValid(func_tuple))
@@ -3603,7 +3641,7 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 	{
 		args = expand_function_arguments(args, result_type, func_tuple);
 		args = (List *) expression_tree_mutator((Node *) args,
-												eval_const_expressions_mutator,
+											  eval_const_expressions_mutator,
 												(void *) context);
 		/* Argument processing done, give it back to the caller */
 		*args_p = args;
@@ -3618,7 +3656,7 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 	if (!newexpr && allow_non_const && OidIsValid(func_form->protransform))
 	{
 		/*
-		 * Build a dummy FuncExpr node containing the simplified arg list.  We
+		 * Build a dummy FuncExpr node containing the simplified arg list.	We
 		 * use this approach to present a uniform interface to the transform
 		 * function regardless of how the function is actually being invoked.
 		 */

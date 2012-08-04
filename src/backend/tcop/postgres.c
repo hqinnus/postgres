@@ -72,6 +72,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/snapmgr.h"
+#include "utils/timeout.h"
 #include "utils/timestamp.h"
 #include "mb/pg_wchar.h"
 
@@ -350,9 +351,9 @@ SocketBackend(StringInfo inBuf)
 		else
 		{
 			/*
-			 * Can't send DEBUG log messages to client at this point.
-			 * Since we're disconnecting right away, we don't need to
-			 * restore whereToSendOutput.
+			 * Can't send DEBUG log messages to client at this point. Since
+			 * we're disconnecting right away, we don't need to restore
+			 * whereToSendOutput.
 			 */
 			whereToSendOutput = DestNone;
 			ereport(DEBUG1,
@@ -393,7 +394,7 @@ SocketBackend(StringInfo inBuf)
 						whereToSendOutput = DestNone;
 						ereport(DEBUG1,
 								(errcode(ERRCODE_CONNECTION_DOES_NOT_EXIST),
-								 errmsg("unexpected EOF on client connection")));
+							 errmsg("unexpected EOF on client connection")));
 					}
 					return EOF;
 				}
@@ -999,12 +1000,12 @@ exec_simple_query(const char *query_string)
 
 		/*
 		 * Start the portal.
-		 * 
-		 * If we took a snapshot for parsing/planning, the portal may be
-		 * able to reuse it for the execution phase.  Currently, this will only
+		 *
+		 * If we took a snapshot for parsing/planning, the portal may be able
+		 * to reuse it for the execution phase.  Currently, this will only
 		 * happen in PORTAL_ONE_SELECT mode.  But even if PortalStart doesn't
-		 * end up being able to do this, keeping the parse/plan snapshot around
-		 * until after we start the portal doesn't cost much.
+		 * end up being able to do this, keeping the parse/plan snapshot
+		 * around until after we start the portal doesn't cost much.
 		 */
 		PortalStart(portal, NULL, 0, snapshot_set);
 
@@ -1263,8 +1264,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 					 errdetail_abort()));
 
 		/*
-		 * Create the CachedPlanSource before we do parse analysis, since
-		 * it needs to see the unmodified raw parse tree.
+		 * Create the CachedPlanSource before we do parse analysis, since it
+		 * needs to see the unmodified raw parse tree.
 		 */
 		psrc = CreateCachedPlan(raw_parse_tree, query_string, commandTag);
 
@@ -1325,8 +1326,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	/*
 	 * CachedPlanSource must be a direct child of MessageContext before we
 	 * reparent unnamed_stmt_context under it, else we have a disconnected
-	 * circular subgraph.  Klugy, but less so than flipping contexts even
-	 * more above.
+	 * circular subgraph.  Klugy, but less so than flipping contexts even more
+	 * above.
 	 */
 	if (unnamed_stmt_context)
 		MemoryContextSetParent(psrc->context, MessageContext);
@@ -1549,9 +1550,9 @@ exec_bind_message(StringInfo input_message)
 	/*
 	 * Set a snapshot if we have parameters to fetch (since the input
 	 * functions might need it) or the query isn't a utility command (and
-	 * hence could require redoing parse analysis and planning).  We keep
-	 * the snapshot active till we're done, so that plancache.c doesn't have
-	 * to take new ones.
+	 * hence could require redoing parse analysis and planning).  We keep the
+	 * snapshot active till we're done, so that plancache.c doesn't have to
+	 * take new ones.
 	 */
 	if (numParams > 0 || analyze_requires_snapshot(psrc->raw_parse_tree))
 	{
@@ -1687,8 +1688,8 @@ exec_bind_message(StringInfo input_message)
 			params->params[paramno].isnull = isNull;
 
 			/*
-			 * We mark the params as CONST.  This ensures that any custom
-			 * plan makes full use of the parameter values.
+			 * We mark the params as CONST.  This ensures that any custom plan
+			 * makes full use of the parameter values.
 			 */
 			params->params[paramno].pflags = PARAM_FLAG_CONST;
 			params->params[paramno].ptype = ptype;
@@ -1736,9 +1737,9 @@ exec_bind_message(StringInfo input_message)
 	/*
 	 * And we're ready to start portal execution.
 	 *
-	 * If we took a snapshot for parsing/planning, we'll try to reuse it
-	 * for query execution (currently, reuse will only occur if
-	 * PORTAL_ONE_SELECT mode is chosen).
+	 * If we took a snapshot for parsing/planning, we'll try to reuse it for
+	 * query execution (currently, reuse will only occur if PORTAL_ONE_SELECT
+	 * mode is chosen).
 	 */
 	PortalStart(portal, params, 0, snapshot_set);
 
@@ -2396,9 +2397,9 @@ start_xact_command(void)
 		/* Set statement timeout running, if any */
 		/* NB: this mustn't be enabled until we are within an xact */
 		if (StatementTimeout > 0)
-			enable_sig_alarm(StatementTimeout, true);
+			enable_timeout_after(STATEMENT_TIMEOUT, StatementTimeout);
 		else
-			cancel_from_timeout = false;
+			disable_timeout(STATEMENT_TIMEOUT, false);
 
 		xact_started = true;
 	}
@@ -2410,7 +2411,7 @@ finish_xact_command(void)
 	if (xact_started)
 	{
 		/* Cancel any active statement timeout before committing */
-		disable_sig_alarm(true);
+		disable_timeout(STATEMENT_TIMEOUT, false);
 
 		/* Now commit the command */
 		ereport(DEBUG3,
@@ -2601,7 +2602,7 @@ die(SIGNAL_ARGS)
 			/* bump holdoff count to make ProcessInterrupts() a no-op */
 			/* until we are done getting ready for it */
 			InterruptHoldoffCount++;
-			LockErrorCleanup();	/* prevent CheckDeadLock from running */
+			LockErrorCleanup(); /* prevent CheckDeadLock from running */
 			DisableNotifyInterrupt();
 			DisableCatchupInterrupt();
 			InterruptHoldoffCount--;
@@ -2643,7 +2644,7 @@ StatementCancelHandler(SIGNAL_ARGS)
 			/* bump holdoff count to make ProcessInterrupts() a no-op */
 			/* until we are done getting ready for it */
 			InterruptHoldoffCount++;
-			LockErrorCleanup();	/* prevent CheckDeadLock from running */
+			LockErrorCleanup(); /* prevent CheckDeadLock from running */
 			DisableNotifyInterrupt();
 			DisableCatchupInterrupt();
 			InterruptHoldoffCount--;
@@ -2802,7 +2803,7 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 			/* bump holdoff count to make ProcessInterrupts() a no-op */
 			/* until we are done getting ready for it */
 			InterruptHoldoffCount++;
-			LockErrorCleanup();	/* prevent CheckDeadLock from running */
+			LockErrorCleanup(); /* prevent CheckDeadLock from running */
 			DisableNotifyInterrupt();
 			DisableCatchupInterrupt();
 			InterruptHoldoffCount--;
@@ -2891,7 +2892,7 @@ ProcessInterrupts(void)
 					(errcode(ERRCODE_QUERY_CANCELED),
 					 errmsg("canceling authentication due to timeout")));
 		}
-		if (cancel_from_timeout)
+		if (get_timeout_indicator(STATEMENT_TIMEOUT))
 		{
 			ImmediateInterruptOK = false;		/* not idle anymore */
 			DisableNotifyInterrupt();
@@ -3269,9 +3270,12 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
 	}
 
 #ifdef HAVE_INT_OPTERR
-	/* Turn this off because it's either printed to stderr and not the log
-	 * where we'd want it, or argv[0] is now "--single", which would make for a
-	 * weird error message.  We print our own error message below. */
+
+	/*
+	 * Turn this off because it's either printed to stderr and not the log
+	 * where we'd want it, or argv[0] is now "--single", which would make for
+	 * a weird error message.  We print our own error message below.
+	 */
 	opterr = 0;
 #endif
 
@@ -3471,7 +3475,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
 		if (IsUnderPostmaster)
 			ereport(FATAL,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("invalid command-line argument for server process: %s", argv[optind]),
+					 errmsg("invalid command-line argument for server process: %s", argv[optind]),
 			  errhint("Try \"%s --help\" for more information.", progname)));
 		else
 			ereport(FATAL,
@@ -3504,7 +3508,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
  * for the session.
  * ----------------------------------------------------------------
  */
-int
+void
 PostgresMain(int argc, char *argv[], const char *username)
 {
 	const char *dbname;
@@ -3611,7 +3615,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 			pqsignal(SIGQUIT, quickdie);		/* hard crash time */
 		else
 			pqsignal(SIGQUIT, die);		/* cancel current query and exit */
-		pqsignal(SIGALRM, handle_sig_alarm);	/* timeout conditions */
+		InitializeTimeouts();		/* establishes SIGALRM handler */
 
 		/*
 		 * Ignore failure to write to frontend. Note: if frontend closes
@@ -3718,7 +3722,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 	/* If this is a WAL sender process, we're done with initialization. */
 	if (am_walsender)
-		proc_exit(WalSenderMain());
+	{
+		WalSenderMain();		/* does not return */
+		abort();
+	}
 
 	/*
 	 * process any libraries that should be preloaded at backend start (this
@@ -3796,10 +3803,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 		/*
 		 * Forget any pending QueryCancel request, since we're returning to
-		 * the idle loop anyway, and cancel the statement timer if running.
+		 * the idle loop anyway, and cancel any active timeout requests.
 		 */
 		QueryCancelPending = false;
-		disable_sig_alarm(true);
+		disable_all_timeouts(false);
 		QueryCancelPending = false;		/* again in case timeout occurred */
 
 		/*
@@ -4192,11 +4199,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 								firstchar)));
 		}
 	}							/* end of input-reading loop */
-
-	/* can't get here because the above loop never exits */
-	Assert(false);
-
-	return 1;					/* keep compiler quiet */
 }
 
 

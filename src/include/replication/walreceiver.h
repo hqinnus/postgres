@@ -17,7 +17,6 @@
 #include "storage/spin.h"
 #include "pgtime.h"
 
-extern bool am_walreceiver;
 extern int	wal_receiver_status_interval;
 extern bool hot_standby_feedback;
 
@@ -109,7 +108,7 @@ typedef void (*walrcv_disconnect_type) (void);
 extern PGDLLIMPORT walrcv_disconnect_type walrcv_disconnect;
 
 /* prototypes for functions in walreceiver.c */
-extern void WalReceiverMain(void);
+extern void WalReceiverMain(void) __attribute__((noreturn));
 
 /* prototypes for functions in walreceiverfuncs.c */
 extern Size WalRcvShmemSize(void);
@@ -118,7 +117,7 @@ extern void ShutdownWalRcv(void);
 extern bool WalRcvInProgress(void);
 extern void RequestXLogStreaming(XLogRecPtr recptr, const char *conninfo);
 extern XLogRecPtr GetWalRcvWriteRecPtr(XLogRecPtr *latestChunkStart);
-extern int GetReplicationApplyDelay(void);
-extern int GetReplicationTransferLatency(void);
+extern int	GetReplicationApplyDelay(void);
+extern int	GetReplicationTransferLatency(void);
 
 #endif   /* _WALRECEIVER_H */

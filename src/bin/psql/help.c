@@ -94,11 +94,11 @@ usage(void)
 	printf(_("  -l, --list               list available databases, then exit\n"));
 	printf(_("  -v, --set=, --variable=NAME=VALUE\n"
 			 "                           set psql variable NAME to VALUE\n"));
+	printf(_("  -V, --version            output version information, then exit\n"));
 	printf(_("  -X, --no-psqlrc          do not read startup file (~/.psqlrc)\n"));
 	printf(_("  -1 (\"one\"), --single-transaction\n"
 			 "                           execute command file as a single transaction\n"));
-	printf(_("  --help                   show this help, then exit\n"));
-	printf(_("  --version                output version information, then exit\n"));
+	printf(_("  -?, --help               show this help, then exit\n"));
 
 	printf(_("\nInput and output options:\n"));
 	printf(_("  -a, --echo-all           echo all input from script\n"));
@@ -124,9 +124,9 @@ usage(void)
 	printf(_("  -T, --table-attr=TEXT    set HTML table tag attributes (e.g., width, border)\n"));
 	printf(_("  -x, --expanded           turn on expanded table output\n"));
 	printf(_("  -z, --field-separator-zero\n"
-			 "                           set field separator to zero byte\n"));
+		   "                           set field separator to zero byte\n"));
 	printf(_("  -0, --record-separator-zero\n"
-			 "                           set record separator to zero byte\n"));
+		  "                           set record separator to zero byte\n"));
 
 	printf(_("\nConnection options:\n"));
 	/* Display default host */
@@ -229,6 +229,7 @@ slashUsage(unsigned short int pager)
 	fprintf(output, _("  \\dv[S+] [PATTERN]      list views\n"));
 	fprintf(output, _("  \\dE[S+] [PATTERN]      list foreign tables\n"));
 	fprintf(output, _("  \\dx[+]  [PATTERN]      list extensions\n"));
+	fprintf(output, _("  \\dy     [PATTERN]      list event triggers\n"));
 	fprintf(output, _("  \\l[+]                  list all databases\n"));
 	fprintf(output, _("  \\sf[+] FUNCNAME        show a function's definition\n"));
 	fprintf(output, _("  \\z      [PATTERN]      same as \\dp\n"));
@@ -247,7 +248,7 @@ slashUsage(unsigned short int pager)
 			ON(pset.popt.topt.tuples_only));
 	fprintf(output, _("  \\T [STRING]            set HTML <table> tag attributes, or unset if none\n"));
 	fprintf(output, _("  \\x [on|off|auto]       toggle expanded output (currently %s)\n"),
-			pset.popt.topt.expanded == 2 ? "auto" : ON(pset.popt.topt.expanded));
+		pset.popt.topt.expanded == 2 ? "auto" : ON(pset.popt.topt.expanded));
 	fprintf(output, "\n");
 
 	fprintf(output, _("Connection\n"));
@@ -435,7 +436,7 @@ print_copyright(void)
 	puts(
 		 "PostgreSQL Database Management System\n"
 		 "(formerly known as Postgres, then as Postgres95)\n\n"
-		 "Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group\n\n"
+		 "Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group\n\n"
 		 "Portions Copyright (c) 1994, The Regents of the University of California\n\n"
 	"Permission to use, copy, modify, and distribute this software and its\n"
 		 "documentation for any purpose, without fee, and without a written agreement\n"

@@ -30,6 +30,7 @@
 #include "optimizer/placeholder.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
+#include "optimizer/planner.h"
 #include "optimizer/predtest.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/subselect.h"
@@ -1190,10 +1191,10 @@ create_indexscan_plan(PlannerInfo *root,
 	/*
 	 * The qpqual list must contain all restrictions not automatically handled
 	 * by the index, other than pseudoconstant clauses which will be handled
-	 * by a separate gating plan node.  All the predicates in the indexquals
+	 * by a separate gating plan node.	All the predicates in the indexquals
 	 * will be checked (either by the index itself, or by nodeIndexscan.c),
 	 * but if there are any "special" operators involved then they must be
-	 * included in qpqual.  The upshot is that qpqual must contain
+	 * included in qpqual.	The upshot is that qpqual must contain
 	 * scan_clauses minus whatever appears in indexquals.
 	 *
 	 * In normal cases simple pointer equality checks will be enough to spot
@@ -1241,7 +1242,7 @@ create_indexscan_plan(PlannerInfo *root,
 					get_parse_rowmark(root->parse, baserelid) == NULL)
 					if (predicate_implied_by(clausel,
 											 best_path->indexinfo->indpred))
-						continue; /* implied by index predicate */
+						continue;		/* implied by index predicate */
 			}
 		}
 		qpqual = lappend(qpqual, rinfo);
@@ -1280,7 +1281,7 @@ create_indexscan_plan(PlannerInfo *root,
 												indexoid,
 												fixed_indexquals,
 												fixed_indexorderbys,
-												best_path->indexinfo->indextlist,
+											best_path->indexinfo->indextlist,
 												best_path->indexscandir);
 	else
 		scan_plan = (Scan *) make_indexscan(tlist,
@@ -1330,15 +1331,15 @@ create_bitmap_scan_plan(PlannerInfo *root,
 	/*
 	 * The qpqual list must contain all restrictions not automatically handled
 	 * by the index, other than pseudoconstant clauses which will be handled
-	 * by a separate gating plan node.  All the predicates in the indexquals
+	 * by a separate gating plan node.	All the predicates in the indexquals
 	 * will be checked (either by the index itself, or by
 	 * nodeBitmapHeapscan.c), but if there are any "special" operators
-	 * involved then they must be added to qpqual.  The upshot is that qpqual
+	 * involved then they must be added to qpqual.	The upshot is that qpqual
 	 * must contain scan_clauses minus whatever appears in indexquals.
 	 *
 	 * This loop is similar to the comparable code in create_indexscan_plan(),
 	 * but with some differences because it has to compare the scan clauses to
-	 * stripped (no RestrictInfos) indexquals.  See comments there for more
+	 * stripped (no RestrictInfos) indexquals.	See comments there for more
 	 * info.
 	 *
 	 * In normal cases simple equal() checks will be enough to spot duplicate
@@ -1932,14 +1933,14 @@ create_foreignscan_plan(PlannerInfo *root, ForeignPath *best_path,
 	Assert(rte->rtekind == RTE_RELATION);
 
 	/*
-	 * Sort clauses into best execution order.  We do this first since the
-	 * FDW might have more info than we do and wish to adjust the ordering.
+	 * Sort clauses into best execution order.	We do this first since the FDW
+	 * might have more info than we do and wish to adjust the ordering.
 	 */
 	scan_clauses = order_qual_clauses(root, scan_clauses);
 
 	/*
 	 * Let the FDW perform its processing on the restriction clauses and
-	 * generate the plan node.  Note that the FDW might remove restriction
+	 * generate the plan node.	Note that the FDW might remove restriction
 	 * clauses that it intends to execute remotely, or even add more (if it
 	 * has selected some join clauses for remote use but also wants them
 	 * rechecked locally).
@@ -2057,7 +2058,7 @@ create_nestloop_plan(PlannerInfo *root,
 				 bms_overlap(((PlaceHolderVar *) nlp->paramval)->phrels,
 							 outerrelids) &&
 				 bms_is_subset(find_placeholder_info(root,
-													 (PlaceHolderVar *) nlp->paramval,
+											(PlaceHolderVar *) nlp->paramval,
 													 false)->ph_eval_at,
 							   outerrelids))
 		{
@@ -2575,9 +2576,9 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 
 		/*
 		 * If not to be replaced, just return the PlaceHolderVar unmodified.
-		 * We use bms_overlap as a cheap/quick test to see if the PHV might
-		 * be evaluated in the outer rels, and then grab its PlaceHolderInfo
-		 * to tell for sure.
+		 * We use bms_overlap as a cheap/quick test to see if the PHV might be
+		 * evaluated in the outer rels, and then grab its PlaceHolderInfo to
+		 * tell for sure.
 		 */
 		if (!bms_overlap(phv->phrels, root->curOuterRels))
 			return node;
@@ -2664,7 +2665,7 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path)
 
 			/*
 			 * Check to see if the indexkey is on the right; if so, commute
-			 * the clause.  The indexkey should be the side that refers to
+			 * the clause.	The indexkey should be the side that refers to
 			 * (only) the base relation.
 			 */
 			if (!bms_equal(rinfo->left_relids, index->rel->relids))
@@ -3771,13 +3772,12 @@ prepare_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
 		{
 			/*
 			 * If we are given a sort column number to match, only consider
-			 * the single TLE at that position.  It's possible that there
-			 * is no such TLE, in which case fall through and generate a
-			 * resjunk targetentry (we assume this must have happened in the
-			 * parent plan as well).  If there is a TLE but it doesn't match
-			 * the pathkey's EC, we do the same, which is probably the wrong
-			 * thing but we'll leave it to caller to complain about the
-			 * mismatch.
+			 * the single TLE at that position.  It's possible that there is
+			 * no such TLE, in which case fall through and generate a resjunk
+			 * targetentry (we assume this must have happened in the parent
+			 * plan as well).  If there is a TLE but it doesn't match the
+			 * pathkey's EC, we do the same, which is probably the wrong thing
+			 * but we'll leave it to caller to complain about the mismatch.
 			 */
 			tle = get_tle_by_resno(tlist, reqColIdx[numsortkeys]);
 			if (tle)
@@ -3827,11 +3827,11 @@ prepare_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
 		if (!tle)
 		{
 			/*
-			 * No matching tlist item; look for a computable expression.
-			 * Note that we treat Aggrefs as if they were variables; this
-			 * is necessary when attempting to sort the output from an Agg
-			 * node for use in a WindowFunc (since grouping_planner will
-			 * have treated the Aggrefs as variables, too).
+			 * No matching tlist item; look for a computable expression. Note
+			 * that we treat Aggrefs as if they were variables; this is
+			 * necessary when attempting to sort the output from an Agg node
+			 * for use in a WindowFunc (since grouping_planner will have
+			 * treated the Aggrefs as variables, too).
 			 */
 			Expr	   *sortexpr = NULL;
 
@@ -3850,7 +3850,8 @@ prepare_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
 					continue;
 
 				/*
-				 * Ignore child members unless they match the rel being sorted.
+				 * Ignore child members unless they match the rel being
+				 * sorted.
 				 */
 				if (em->em_is_child &&
 					!bms_equal(em->em_relids, relids))
@@ -3898,7 +3899,7 @@ prepare_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
 								  NULL,
 								  true);
 			tlist = lappend(tlist, tle);
-			lefttree->targetlist = tlist;	/* just in case NIL before */
+			lefttree->targetlist = tlist;		/* just in case NIL before */
 		}
 
 		/*
@@ -3958,8 +3959,7 @@ find_ec_member_for_tle(EquivalenceClass *ec,
 
 		/*
 		 * We shouldn't be trying to sort by an equivalence class that
-		 * contains a constant, so no need to consider such cases any
-		 * further.
+		 * contains a constant, so no need to consider such cases any further.
 		 */
 		if (em->em_is_const)
 			continue;
@@ -4208,8 +4208,8 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	 * anything for Aggref nodes; this is okay since they are really
 	 * comparable to Vars.
 	 *
-	 * See notes in grouping_planner about why only make_agg, make_windowagg
-	 * and make_group worry about tlist eval cost.
+	 * See notes in add_tlist_costs_to_plan about why only make_agg,
+	 * make_windowagg and make_group worry about tlist eval cost.
 	 */
 	if (qual)
 	{
@@ -4218,10 +4218,7 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 		plan->total_cost += qual_cost.startup;
 		plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
 	}
-	cost_qual_eval(&qual_cost, tlist, root);
-	plan->startup_cost += qual_cost.startup;
-	plan->total_cost += qual_cost.startup;
-	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
+	add_tlist_costs_to_plan(root, plan, tlist);
 
 	plan->qual = qual;
 	plan->targetlist = tlist;
@@ -4242,7 +4239,6 @@ make_windowagg(PlannerInfo *root, List *tlist,
 	WindowAgg  *node = makeNode(WindowAgg);
 	Plan	   *plan = &node->plan;
 	Path		windowagg_path; /* dummy for result of cost_windowagg */
-	QualCost	qual_cost;
 
 	node->winref = winref;
 	node->partNumCols = partNumCols;
@@ -4267,13 +4263,10 @@ make_windowagg(PlannerInfo *root, List *tlist,
 	/*
 	 * We also need to account for the cost of evaluation of the tlist.
 	 *
-	 * See notes in grouping_planner about why only make_agg, make_windowagg
-	 * and make_group worry about tlist eval cost.
+	 * See notes in add_tlist_costs_to_plan about why only make_agg,
+	 * make_windowagg and make_group worry about tlist eval cost.
 	 */
-	cost_qual_eval(&qual_cost, tlist, root);
-	plan->startup_cost += qual_cost.startup;
-	plan->total_cost += qual_cost.startup;
-	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
+	add_tlist_costs_to_plan(root, plan, tlist);
 
 	plan->targetlist = tlist;
 	plan->lefttree = lefttree;
@@ -4324,8 +4317,8 @@ make_group(PlannerInfo *root,
 	 * lower plan level and will only be copied by the Group node. Worth
 	 * fixing?
 	 *
-	 * See notes in grouping_planner about why only make_agg, make_windowagg
-	 * and make_group worry about tlist eval cost.
+	 * See notes in add_tlist_costs_to_plan about why only make_agg,
+	 * make_windowagg and make_group worry about tlist eval cost.
 	 */
 	if (qual)
 	{
@@ -4334,10 +4327,7 @@ make_group(PlannerInfo *root,
 		plan->total_cost += qual_cost.startup;
 		plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
 	}
-	cost_qual_eval(&qual_cost, tlist, root);
-	plan->startup_cost += qual_cost.startup;
-	plan->total_cost += qual_cost.startup;
-	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
+	add_tlist_costs_to_plan(root, plan, tlist);
 
 	plan->qual = qual;
 	plan->targetlist = tlist;

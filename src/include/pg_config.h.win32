@@ -420,6 +420,9 @@
 /* Define to 1 if you have the `symlink' function. */
 #define HAVE_SYMLINK 1
 
+/* Define to 1 if you have the `sync_file_range' function. */
+/* #undef HAVE_SYNC_FILE_RANGE */
+
 /* Define to 1 if you have the `sysconf' function. */
 /* #undef HAVE_SYSCONF */
 
@@ -505,9 +508,6 @@
 /* Define to 1 if you have the `vsnprintf' function. */
 #define HAVE_VSNPRINTF 1
 
-/* Define to 1 if you have the `waitpid' function. */
-/* #undef HAVE_WAITPID */
-
 /* Define to 1 if you have the <wchar.h> header file. */
 #define HAVE_WCHAR_H 1
 
@@ -548,16 +548,16 @@
 #define PACKAGE_NAME "PostgreSQL"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "PostgreSQL 9.2beta1"
+#define PACKAGE_STRING "PostgreSQL 9.3devel"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "9.2beta1"
+#define PACKAGE_VERSION "9.3devel"
 
 /* PostgreSQL version as a string */
-#define PG_VERSION "9.2beta1"
+#define PG_VERSION "9.3devel"
 
 /* PostgreSQL version as a number */
-#define PG_VERSION_NUM 90200
+#define PG_VERSION_NUM 90300
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "postgresql"

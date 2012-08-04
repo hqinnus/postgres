@@ -21,8 +21,6 @@ static void transfer_relfile(pageCnvCtx *pageConverter,
 				 const char *fromfile, const char *tofile,
 				 const char *nspname, const char *relname);
 
-/* used by scandir(), must be global */
-char		scandir_file_pattern[MAXPGPATH];
 
 /*
  * transfer_all_new_dbs()
@@ -34,26 +32,28 @@ const char *
 transfer_all_new_dbs(DbInfoArr *old_db_arr,
 				   DbInfoArr *new_db_arr, char *old_pgdata, char *new_pgdata)
 {
-	int			old_dbnum, new_dbnum;
+	int			old_dbnum,
+				new_dbnum;
 	const char *msg = NULL;
 
-	prep_status("%s user relation files\n",
-		user_opts.transfer_mode == TRANSFER_MODE_LINK ? "Linking" : "Copying");
+	pg_log(PG_REPORT, "%s user relation files\n",
+	  user_opts.transfer_mode == TRANSFER_MODE_LINK ? "Linking" : "Copying");
 
 	/* Scan the old cluster databases and transfer their files */
 	for (old_dbnum = new_dbnum = 0;
 		 old_dbnum < old_db_arr->ndbs;
 		 old_dbnum++, new_dbnum++)
 	{
-		DbInfo	   *old_db = &old_db_arr->dbs[old_dbnum], *new_db = NULL;
+		DbInfo	   *old_db = &old_db_arr->dbs[old_dbnum],
+				   *new_db = NULL;
 		FileNameMap *mappings;
 		int			n_maps;
 		pageCnvCtx *pageConverter = NULL;
 
 		/*
-		 *	Advance past any databases that exist in the new cluster
-		 *	but not in the old, e.g. "postgres".  (The user might
-		 *	have removed the 'postgres' database from the old cluster.)
+		 * Advance past any databases that exist in the new cluster but not in
+		 * the old, e.g. "postgres".  (The user might have removed the
+		 * 'postgres' database from the old cluster.)
 		 */
 		for (; new_dbnum < new_db_arr->ndbs; new_dbnum++)
 		{
@@ -83,8 +83,8 @@ transfer_all_new_dbs(DbInfoArr *old_db_arr,
 		}
 	}
 
-	prep_status(" ");			/* in case nothing printed; pass a space so gcc
-								 * doesn't complain about empty format
+	prep_status(" ");			/* in case nothing printed; pass a space so
+								 * gcc doesn't complain about empty format
 								 * string */
 	check_ok();
 
@@ -132,19 +132,20 @@ transfer_single_new_db(pageCnvCtx *pageConverter,
 					   FileNameMap *maps, int size)
 {
 	char		old_dir[MAXPGPATH];
-	struct dirent **namelist = NULL;
+	char		file_pattern[MAXPGPATH];
+	char		**namelist = NULL;
 	int			numFiles = 0;
 	int			mapnum;
 	int			fileno;
 	bool		vm_crashsafe_change = false;
-	
+
 	old_dir[0] = '\0';
 
 	/* Do not copy non-crashsafe vm files for binaries that assume crashsafety */
 	if (old_cluster.controldata.cat_ver < VISIBILITY_MAP_CRASHSAFE_CAT_VER &&
 		new_cluster.controldata.cat_ver >= VISIBILITY_MAP_CRASHSAFE_CAT_VER)
 		vm_crashsafe_change = true;
-	
+
 	for (mapnum = 0; mapnum < size; mapnum++)
 	{
 		char		old_file[MAXPGPATH];
@@ -173,7 +174,8 @@ transfer_single_new_db(pageCnvCtx *pageConverter,
 		pg_log(PG_REPORT, OVERWRITE_MESSAGE, old_file);
 
 		/*
-		 * Copy/link the relation file to the new cluster
+		 * Copy/link the relation's primary file (segment 0 of main fork)
+		 * to the new cluster
 		 */
 		unlink(new_file);
 		transfer_relfile(pageConverter, old_file, new_file,
@@ -185,26 +187,26 @@ transfer_single_new_db(pageCnvCtx *pageConverter,
 			/*
 			 * Copy/link any fsm and vm files, if they exist
 			 */
-			snprintf(scandir_file_pattern, sizeof(scandir_file_pattern), "%u_",
+			snprintf(file_pattern, sizeof(file_pattern), "%u_",
 					 maps[mapnum].old_relfilenode);
 
 			for (fileno = 0; fileno < numFiles; fileno++)
 			{
-				char *vm_offset = strstr(namelist[fileno]->d_name, "_vm");
-				bool is_vm_file = false;
+				char	   *vm_offset = strstr(namelist[fileno], "_vm");
+				bool		is_vm_file = false;
 
 				/* Is a visibility map file? (name ends with _vm) */
 				if (vm_offset && strlen(vm_offset) == strlen("_vm"))
 					is_vm_file = true;
 
-				if (strncmp(namelist[fileno]->d_name, scandir_file_pattern,
-							strlen(scandir_file_pattern)) == 0 &&
+				if (strncmp(namelist[fileno], file_pattern,
+							strlen(file_pattern)) == 0 &&
 					(!is_vm_file || !vm_crashsafe_change))
 				{
 					snprintf(old_file, sizeof(old_file), "%s/%s", maps[mapnum].old_dir,
-							 namelist[fileno]->d_name);
+							 namelist[fileno]);
 					snprintf(new_file, sizeof(new_file), "%s/%u%s", maps[mapnum].new_dir,
-							 maps[mapnum].new_relfilenode, strchr(namelist[fileno]->d_name, '_'));
+							 maps[mapnum].new_relfilenode, strchr(namelist[fileno], '_'));
 
 					unlink(new_file);
 					transfer_relfile(pageConverter, old_file, new_file,
@@ -220,18 +222,18 @@ transfer_single_new_db(pageCnvCtx *pageConverter,
 		 * relfilenode.3, ...  'fsm' and 'vm' files use underscores so are not
 		 * copied.
 		 */
-		snprintf(scandir_file_pattern, sizeof(scandir_file_pattern), "%u.",
+		snprintf(file_pattern, sizeof(file_pattern), "%u.",
 				 maps[mapnum].old_relfilenode);
 
 		for (fileno = 0; fileno < numFiles; fileno++)
 		{
-			if (strncmp(namelist[fileno]->d_name, scandir_file_pattern,
-						strlen(scandir_file_pattern)) == 0)
+			if (strncmp(namelist[fileno], file_pattern,
+						strlen(file_pattern)) == 0)
 			{
 				snprintf(old_file, sizeof(old_file), "%s/%s", maps[mapnum].old_dir,
-						 namelist[fileno]->d_name);
+						 namelist[fileno]);
 				snprintf(new_file, sizeof(new_file), "%s/%u%s", maps[mapnum].new_dir,
-						 maps[mapnum].new_relfilenode, strchr(namelist[fileno]->d_name, '.'));
+						 maps[mapnum].new_relfilenode, strchr(namelist[fileno], '.'));
 
 				unlink(new_file);
 				transfer_relfile(pageConverter, old_file, new_file,
@@ -239,7 +241,6 @@ transfer_single_new_db(pageCnvCtx *pageConverter,
 			}
 		}
 	}
-
 
 	if (numFiles > 0)
 	{

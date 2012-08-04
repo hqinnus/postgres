@@ -14,8 +14,7 @@
 #ifndef _PROC_H_
 #define _PROC_H_
 
-#include "access/xlog.h"
-#include "datatype/timestamp.h"
+#include "access/xlogdefs.h"
 #include "storage/latch.h"
 #include "storage/lock.h"
 #include "storage/pg_sema.h"
@@ -131,14 +130,15 @@ struct PGPROC
 
 	struct XidCache subxids;	/* cache for subtransaction XIDs */
 
-	/* Per-backend LWLock.  Protects fields below. */
+	/* Per-backend LWLock.	Protects fields below. */
 	LWLockId	backendLock;	/* protects the fields below */
 
 	/* Lock manager data, recording fast-path locks taken by this backend. */
 	uint64		fpLockBits;		/* lock modes held for each fast-path slot */
-	Oid			fpRelId[FP_LOCK_SLOTS_PER_BACKEND]; /* slots for rel oids */
+	Oid			fpRelId[FP_LOCK_SLOTS_PER_BACKEND];		/* slots for rel oids */
 	bool		fpVXIDLock;		/* are we holding a fast-path VXID lock? */
-	LocalTransactionId fpLocalTransactionId;	/* lxid for fast-path VXID lock */
+	LocalTransactionId fpLocalTransactionId;	/* lxid for fast-path VXID
+												 * lock */
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
@@ -149,7 +149,7 @@ extern PGDLLIMPORT struct PGXACT *MyPgXact;
 
 /*
  * Prior to PostgreSQL 9.2, the fields below were stored as part of the
- * PGPROC.  However, benchmarking revealed that packing these particular
+ * PGPROC.	However, benchmarking revealed that packing these particular
  * members into a separate array as tightly as possible sped up GetSnapshotData
  * considerably on systems with many CPU cores, by reducing the number of
  * cache lines needing to be fetched.  Thus, think very carefully before adding
@@ -221,8 +221,6 @@ extern int	DeadlockTimeout;
 extern int	StatementTimeout;
 extern bool log_lock_waits;
 
-extern volatile bool cancel_from_timeout;
-
 
 /*
  * Function Prototypes
@@ -245,19 +243,11 @@ extern void ProcQueueInit(PROC_QUEUE *queue);
 extern int	ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable);
 extern PGPROC *ProcWakeup(PGPROC *proc, int waitStatus);
 extern void ProcLockWakeup(LockMethod lockMethodTable, LOCK *lock);
+extern void CheckDeadLock(void);
 extern bool IsWaitingForLock(void);
 extern void LockErrorCleanup(void);
 
 extern void ProcWaitForSignal(void);
 extern void ProcSendSignal(int pid);
-
-extern bool enable_sig_alarm(int delayms, bool is_statement_timeout);
-extern bool disable_sig_alarm(bool is_statement_timeout);
-extern void handle_sig_alarm(SIGNAL_ARGS);
-
-extern bool enable_standby_sig_alarm(TimestampTz now,
-						 TimestampTz fin_time, bool deadlock_only);
-extern bool disable_standby_sig_alarm(void);
-extern void handle_standby_sig_alarm(SIGNAL_ARGS);
 
 #endif   /* PROC_H */

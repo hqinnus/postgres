@@ -18,8 +18,9 @@
 static void check_data_dir(const char *pg_data);
 static void check_bin_dir(ClusterInfo *cluster);
 static void validate_exec(const char *dir, const char *cmdName);
+
 #ifdef WIN32
-static int win32_check_directory_write_permissions(void);
+static int	win32_check_directory_write_permissions(void);
 #endif
 
 
@@ -28,7 +29,8 @@ static int win32_check_directory_write_permissions(void);
  *
  *	Formats a command from the given argument list and executes that
  *	command.  If the command executes, exec_prog() returns 1 otherwise
- *	exec_prog() logs an error message and returns 0.
+ *	exec_prog() logs an error message and returns 0.  Either way, the command
+ *	line to be executed is saved to the specified log file.
  *
  *	If throw_error is TRUE, this function will throw a PG_FATAL error
  *	instead of returning should an error occur.
@@ -39,8 +41,10 @@ exec_prog(bool throw_error, bool is_priv,
 {
 	va_list		args;
 	int			result;
+	int			retval;
 	char		cmd[MAXPGPATH];
 	mode_t		old_umask = 0;
+	FILE	   *log = fopen(log_file, "a+");
 
 	if (is_priv)
 		old_umask = umask(S_IRWXG | S_IRWXO);
@@ -50,6 +54,8 @@ exec_prog(bool throw_error, bool is_priv,
 	va_end(args);
 
 	pg_log(PG_VERBOSE, "%s\n", cmd);
+	fprintf(log, "command: %s\n", cmd);
+	fflush(log);
 
 	result = system(cmd);
 
@@ -64,11 +70,16 @@ exec_prog(bool throw_error, bool is_priv,
 		pg_log(throw_error ? PG_FATAL : PG_REPORT,
 			   "Consult the last few lines of \"%s\" for\n"
 			   "the probable cause of the failure.\n",
-				log_file);
-		return 1;
+			   log_file);
+		retval = 1;
 	}
+	else
+		retval = 0;
 
-	return 0;
+	fprintf(log, "\n\n");
+	fclose(log);
+
+	return retval;
 }
 
 
@@ -142,12 +153,12 @@ verify_directories(void)
 static int
 win32_check_directory_write_permissions(void)
 {
-	int fd;
+	int			fd;
 
 	/*
-	 *	We open a file we would normally create anyway.  We do this even in
-	 *	'check' mode, which isn't ideal, but this is the best we can do.
-	 */	
+	 * We open a file we would normally create anyway.	We do this even in
+	 * 'check' mode, which isn't ideal, but this is the best we can do.
+	 */
 	if ((fd = open(GLOBALS_DUMP_FILE, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR)) < 0)
 		return -1;
 	close(fd);
@@ -184,7 +195,7 @@ check_data_dir(const char *pg_data)
 		struct stat statBuf;
 
 		snprintf(subDirName, sizeof(subDirName), "%s%s%s", pg_data,
-			/* Win32 can't stat() a directory with a trailing slash. */
+		/* Win32 can't stat() a directory with a trailing slash. */
 				 *requiredSubdirs[subdirnum] ? "/" : "",
 				 requiredSubdirs[subdirnum]);
 

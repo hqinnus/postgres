@@ -594,10 +594,10 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace)
 	OldHeapDesc = RelationGetDescr(OldHeap);
 
 	/*
-	 * Note that the NewHeap will not
-	 * receive any of the defaults or constraints associated with the OldHeap;
-	 * we don't need 'em, and there's no reason to spend cycles inserting them
-	 * into the catalogs only to delete them.
+	 * Note that the NewHeap will not receive any of the defaults or
+	 * constraints associated with the OldHeap; we don't need 'em, and there's
+	 * no reason to spend cycles inserting them into the catalogs only to
+	 * delete them.
 	 */
 
 	/*
@@ -1204,9 +1204,9 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 
 	/* swap size statistics too, since new rel has freshly-updated stats */
 	{
-		int4		swap_pages;
+		int32		swap_pages;
 		float4		swap_tuples;
-		int4		swap_allvisible;
+		int32		swap_allvisible;
 
 		swap_pages = relform1->relpages;
 		relform1->relpages = relform2->relpages;

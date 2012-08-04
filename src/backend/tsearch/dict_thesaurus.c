@@ -372,8 +372,8 @@ cmpLexemeQ(const void *a, const void *b)
 static int
 cmpTheLexeme(const void *a, const void *b)
 {
-	const TheLexeme  *la = (const TheLexeme *) a;
-	const TheLexeme  *lb = (const TheLexeme *) b;
+	const TheLexeme *la = (const TheLexeme *) a;
+	const TheLexeme *lb = (const TheLexeme *) b;
 	int			res;
 
 	if ((res = cmpLexeme(la, lb)) != 0)
@@ -744,8 +744,6 @@ findVariant(LexemeInfo *in, LexemeInfo *stored, uint16 curpos, LexemeInfo **newi
 		for (i = 0; i < newn; i++)
 			newin[i] = newin[i]->nextentry;
 	}
-
-	return NULL;
 }
 
 static TSLexeme *

@@ -58,6 +58,7 @@ typedef struct
 	char	   *filename;		/* filename excluding the directory (basename) */
 } lclTocEntry;
 
+/* translator: this is a module name */
 static const char *modulename = gettext_noop("directory archiver");
 
 /* prototypes for private functions */
@@ -83,8 +84,6 @@ static void _EndBlobs(ArchiveHandle *AH, TocEntry *te);
 static void _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt);
 
 static char *prependDirectory(ArchiveHandle *AH, const char *relativeFilename);
-
-static void createDirectory(const char *dir);
 
 
 /*
@@ -148,8 +147,9 @@ InitArchiveFmt_Directory(ArchiveHandle *AH)
 
 	if (AH->mode == archModeWrite)
 	{
-		/* Create the directory, errors are caught there */
-		createDirectory(ctx->directory);
+		if (mkdir(ctx->directory, 0700) < 0)
+			exit_horribly(modulename, "could not create directory \"%s\": %s\n",
+						  ctx->directory, strerror(errno));
 	}
 	else
 	{							/* Read Mode */
@@ -178,7 +178,7 @@ InitArchiveFmt_Directory(ArchiveHandle *AH)
 		/* Nothing else in the file, so close it again... */
 		if (cfclose(tocFH) != 0)
 			exit_horribly(modulename, "could not close TOC file: %s\n",
-						 strerror(errno));
+						  strerror(errno));
 		ctx->dataFH = NULL;
 	}
 }
@@ -347,7 +347,7 @@ _PrintFileData(ArchiveHandle *AH, char *filename, RestoreOptions *ropt)
 
 	if (!cfp)
 		exit_horribly(modulename, "could not open input file \"%s\": %s\n",
-					 filename, strerror(errno));
+					  filename, strerror(errno));
 
 	buf = pg_malloc(ZLIB_OUT_SIZE);
 	buflen = ZLIB_OUT_SIZE;
@@ -356,9 +356,9 @@ _PrintFileData(ArchiveHandle *AH, char *filename, RestoreOptions *ropt)
 		ahwrite(buf, 1, cnt, AH);
 
 	free(buf);
-	if (cfclose(cfp) != 0)
+	if (cfclose(cfp) !=0)
 		exit_horribly(modulename, "could not close data file: %s\n",
-					 strerror(errno));
+					  strerror(errno));
 }
 
 /*
@@ -407,8 +407,8 @@ _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt)
 		char		path[MAXPGPATH];
 
 		if (sscanf(line, "%u %s\n", &oid, fname) != 2)
-			exit_horribly(modulename, "invalid line in large object TOC file: %s\n",
-						  line);
+			exit_horribly(modulename, "invalid line in large object TOC file \"%s\": \"%s\"\n",
+						  fname, line);
 
 		StartRestoreBlob(AH, oid, ropt->dropSchema);
 		snprintf(path, MAXPGPATH, "%s/%s", ctx->directory, fname);
@@ -417,7 +417,7 @@ _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt)
 	}
 	if (!cfeof(ctx->blobsTocFH))
 		exit_horribly(modulename, "error reading large object TOC file \"%s\"\n",
-					 fname);
+					  fname);
 
 	if (cfclose(ctx->blobsTocFH) != 0)
 		exit_horribly(modulename, "could not close large object TOC file \"%s\": %s\n",
@@ -478,7 +478,7 @@ _WriteBuf(ArchiveHandle *AH, const void *buf, size_t len)
 	res = cfwrite(buf, len, ctx->dataFH);
 	if (res != len)
 		exit_horribly(modulename, "could not write to output file: %s\n",
-					 strerror(errno));
+					  strerror(errno));
 
 	return res;
 }
@@ -589,7 +589,7 @@ _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
 
 	if (ctx->dataFH == NULL)
 		exit_horribly(modulename, "could not open output file \"%s\": %s\n",
-					 fname, strerror(errno));
+					  fname, strerror(errno));
 }
 
 /*
@@ -628,34 +628,6 @@ _EndBlobs(ArchiveHandle *AH, TocEntry *te)
 	ctx->blobsTocFH = NULL;
 }
 
-static void
-createDirectory(const char *dir)
-{
-	struct stat st;
-
-	/* the directory must not exist yet. */
-	if (stat(dir, &st) == 0)
-	{
-		if (S_ISDIR(st.st_mode))
-			exit_horribly(modulename,
-						  "cannot create directory %s, it exists already\n",
-						  dir);
-		else
-			exit_horribly(modulename,
-						  "cannot create directory %s, a file with this name "
-						  "exists already\n", dir);
-	}
-
-	/*
-	 * Now we create the directory. Note that for some race condition we could
-	 * also run into the situation that the directory has been created just
-	 * between our two calls.
-	 */
-	if (mkdir(dir, 0700) < 0)
-		exit_horribly(modulename, "could not create directory %s: %s",
-					  dir, strerror(errno));
-}
-
 
 static char *
 prependDirectory(ArchiveHandle *AH, const char *relativeFilename)
@@ -667,7 +639,7 @@ prependDirectory(ArchiveHandle *AH, const char *relativeFilename)
 	dname = ctx->directory;
 
 	if (strlen(dname) + 1 + strlen(relativeFilename) + 1 > MAXPGPATH)
-		exit_horribly(modulename, "path name too long: %s", dname);
+		exit_horribly(modulename, "file name too long: \"%s\"\n", dname);
 
 	strcpy(buf, dname);
 	strcat(buf, "/");

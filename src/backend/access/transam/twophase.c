@@ -58,6 +58,7 @@
 #include "replication/syncrep.h"
 #include "storage/fd.h"
 #include "storage/predicate.h"
+#include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/sinvaladt.h"
 #include "storage/smgr.h"
@@ -333,8 +334,7 @@ MarkAsPreparing(TransactionId xid, const char *gid,
 
 	gxact->prepared_at = prepared_at;
 	/* initialize LSN to 0 (start of WAL) */
-	gxact->prepare_lsn.xlogid = 0;
-	gxact->prepare_lsn.xrecoff = 0;
+	gxact->prepare_lsn = 0;
 	gxact->owner = owner;
 	gxact->locking_xid = xid;
 	gxact->valid = false;
@@ -360,8 +360,9 @@ static void
 GXactLoadSubxactData(GlobalTransaction gxact, int nsubxacts,
 					 TransactionId *children)
 {
-	PGPROC *proc = &ProcGlobal->allProcs[gxact->pgprocno];
-	PGXACT *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
+	PGPROC	   *proc = &ProcGlobal->allProcs[gxact->pgprocno];
+	PGXACT	   *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
+
 	/* We need no extra lock since the GXACT isn't valid yet */
 	if (nsubxacts > PGPROC_MAX_CACHED_SUBXIDS)
 	{
@@ -410,7 +411,7 @@ LockGXact(const char *gid, Oid user)
 	for (i = 0; i < TwoPhaseState->numPrepXacts; i++)
 	{
 		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
-		PGPROC *proc = &ProcGlobal->allProcs[gxact->pgprocno];
+		PGPROC	   *proc = &ProcGlobal->allProcs[gxact->pgprocno];
 
 		/* Ignore not-yet-valid GIDs */
 		if (!gxact->valid)
@@ -523,7 +524,7 @@ TransactionIdIsPrepared(TransactionId xid)
 	for (i = 0; i < TwoPhaseState->numPrepXacts; i++)
 	{
 		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
-		PGXACT *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
+		PGXACT	   *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
 
 		if (gxact->valid && pgxact->xid == xid)
 		{
@@ -648,8 +649,8 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 	while (status->array != NULL && status->currIdx < status->ngxacts)
 	{
 		GlobalTransaction gxact = &status->array[status->currIdx++];
-		PGPROC *proc = &ProcGlobal->allProcs[gxact->pgprocno];
-		PGXACT *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
+		PGPROC	   *proc = &ProcGlobal->allProcs[gxact->pgprocno];
+		PGXACT	   *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
 		Datum		values[5];
 		bool		nulls[5];
 		HeapTuple	tuple;
@@ -719,7 +720,7 @@ TwoPhaseGetDummyProc(TransactionId xid)
 	for (i = 0; i < TwoPhaseState->numPrepXacts; i++)
 	{
 		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
-		PGXACT *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
+		PGXACT	   *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
 
 		if (pgxact->xid == xid)
 		{
@@ -850,8 +851,8 @@ save_state_data(const void *data, uint32 len)
 void
 StartPrepare(GlobalTransaction gxact)
 {
-	PGPROC *proc = &ProcGlobal->allProcs[gxact->pgprocno];
-	PGXACT *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
+	PGPROC	   *proc = &ProcGlobal->allProcs[gxact->pgprocno];
+	PGXACT	   *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
 	TransactionId xid = pgxact->xid;
 	TwoPhaseFileHeader hdr;
 	TransactionId *children;
@@ -1041,13 +1042,6 @@ EndPrepare(GlobalTransaction gxact)
 
 	/* If we crash now, we have prepared: WAL replay will fix things */
 
-	/*
-	 * Wake up all walsenders to send WAL up to the PREPARE record immediately
-	 * if replication is enabled
-	 */
-	if (max_wal_senders > 0)
-		WalSndWakeup();
-
 	/* write correct CRC and close file */
 	if ((write(fd, &statefile_crc, sizeof(pg_crc32))) != sizeof(pg_crc32))
 	{
@@ -1063,9 +1057,9 @@ EndPrepare(GlobalTransaction gxact)
 				 errmsg("could not close two-phase state file: %m")));
 
 	/*
-	 * Mark the prepared transaction as valid.	As soon as xact.c marks MyPgXact
-	 * as not running our XID (which it will do immediately after this
-	 * function returns), others can commit/rollback the xact.
+	 * Mark the prepared transaction as valid.	As soon as xact.c marks
+	 * MyPgXact as not running our XID (which it will do immediately after
+	 * this function returns), others can commit/rollback the xact.
 	 *
 	 * NB: a side effect of this is to make a dummy ProcArray entry for the
 	 * prepared XID.  This must happen before we clear the XID from MyPgXact,
@@ -1356,12 +1350,8 @@ FinishPreparedTransaction(const char *gid, bool isCommit)
 	for (i = 0; i < ndelrels; i++)
 	{
 		SMgrRelation srel = smgropen(delrels[i], InvalidBackendId);
-		ForkNumber	fork;
 
-		for (fork = 0; fork <= MAX_FORKNUM; fork++)
-		{
-			smgrdounlink(srel, fork, false);
-		}
+		smgrdounlink(srel, false);
 		smgrclose(srel);
 	}
 
@@ -1555,7 +1545,7 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 	for (i = 0; i < TwoPhaseState->numPrepXacts; i++)
 	{
 		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
-		PGXACT *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
+		PGXACT	   *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
 
 		if (gxact->valid &&
 			XLByteLE(gxact->prepare_lsn, redo_horizon))
@@ -1711,7 +1701,7 @@ PrescanPreparedTransactions(TransactionId **xids_p, int *nxids_p)
 			 * XID, and they may force us to advance nextXid.
 			 *
 			 * We don't expect anyone else to modify nextXid, hence we don't
-			 * need to hold a lock while examining it.  We still acquire the
+			 * need to hold a lock while examining it.	We still acquire the
 			 * lock to modify it, though.
 			 */
 			subxids = (TransactionId *)
@@ -2048,13 +2038,6 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	/* Flush XLOG to disk */
 	XLogFlush(recptr);
 
-	/*
-	 * Wake up all walsenders to send WAL up to the COMMIT PREPARED record
-	 * immediately if replication is enabled
-	 */
-	if (max_wal_senders > 0)
-		WalSndWakeup();
-
 	/* Mark the transaction committed in pg_clog */
 	TransactionIdCommitTree(xid, nchildren, children);
 
@@ -2134,13 +2117,6 @@ RecordTransactionAbortPrepared(TransactionId xid,
 
 	/* Always flush, since we're about to remove the 2PC state file */
 	XLogFlush(recptr);
-
-	/*
-	 * Wake up all walsenders to send WAL up to the ABORT PREPARED record
-	 * immediately if replication is enabled
-	 */
-	if (max_wal_senders > 0)
-		WalSndWakeup();
 
 	/*
 	 * Mark the transaction aborted in clog.  This is not absolutely necessary

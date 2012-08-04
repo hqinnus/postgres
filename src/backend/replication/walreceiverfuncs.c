@@ -185,8 +185,8 @@ RequestXLogStreaming(XLogRecPtr recptr, const char *conninfo)
 	 * being created by XLOG streaming, which might cause trouble later on if
 	 * the segment is e.g archived.
 	 */
-	if (recptr.xrecoff % XLogSegSize != 0)
-		recptr.xrecoff -= recptr.xrecoff % XLogSegSize;
+	if (recptr % XLogSegSize != 0)
+		recptr -= recptr % XLogSegSize;
 
 	SpinLockAcquire(&walrcv->mutex);
 
@@ -204,8 +204,7 @@ RequestXLogStreaming(XLogRecPtr recptr, const char *conninfo)
 	 * If this is the first startup of walreceiver, we initialize receivedUpto
 	 * and latestChunkStart to receiveStart.
 	 */
-	if (walrcv->receiveStart.xlogid == 0 &&
-		walrcv->receiveStart.xrecoff == 0)
+	if (walrcv->receiveStart == 0)
 	{
 		walrcv->receivedUpto = recptr;
 		walrcv->latestChunkStart = recptr;
@@ -252,8 +251,8 @@ GetReplicationApplyDelay(void)
 	XLogRecPtr	receivePtr;
 	XLogRecPtr	replayPtr;
 
-	long	secs;
-	int		usecs;
+	long		secs;
+	int			usecs;
 
 	SpinLockAcquire(&walrcv->mutex);
 	receivePtr = walrcv->receivedUpto;
@@ -284,9 +283,9 @@ GetReplicationTransferLatency(void)
 	TimestampTz lastMsgSendTime;
 	TimestampTz lastMsgReceiptTime;
 
-	long	secs = 0;
-	int		usecs = 0;
-	int		ms;
+	long		secs = 0;
+	int			usecs = 0;
+	int			ms;
 
 	SpinLockAcquire(&walrcv->mutex);
 	lastMsgSendTime = walrcv->lastMsgSendTime;

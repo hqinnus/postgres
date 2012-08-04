@@ -44,6 +44,7 @@ struct options
 	char	   *hostname;
 	char	   *port;
 	char	   *username;
+	const char *progname;
 };
 
 /* function prototypes */
@@ -80,6 +81,7 @@ get_opts(int argc, char **argv, struct options * my_opts)
 	my_opts->hostname = NULL;
 	my_opts->port = NULL;
 	my_opts->username = NULL;
+	my_opts->progname = progname;
 
 	if (argc > 1)
 	{
@@ -179,20 +181,20 @@ help(const char *progname)
 		   "Usage:\n"
 		   "  %s [OPTION]...\n"
 		   "\nOptions:\n"
-		   "  -d DBNAME    database to connect to\n"
-		   "  -f FILENODE  show info for table with given file node\n"
-		   "  -H HOSTNAME  database server host or socket directory\n"
-		   "  -i           show indexes and sequences too\n"
-		   "  -o OID       show info for table with given OID\n"
-		   "  -p PORT      database server port number\n"
-		   "  -q           quiet (don't show headers)\n"
-		   "  -s           show all tablespaces\n"
-		   "  -S           show system objects too\n"
-		   "  -t TABLE     show info for named table\n"
-		   "  -U NAME      connect as specified database user\n"
-		   "  -x           extended (show additional columns)\n"
-		   "  --help       show this help, then exit\n"
-		   "  --version    output version information, then exit\n"
+		   "  -d DBNAME      database to connect to\n"
+		   "  -f FILENODE    show info for table with given file node\n"
+		   "  -H HOSTNAME    database server host or socket directory\n"
+		   "  -i             show indexes and sequences too\n"
+		   "  -o OID         show info for table with given OID\n"
+		   "  -p PORT        database server port number\n"
+		   "  -q             quiet (don't show headers)\n"
+		   "  -s             show all tablespaces\n"
+		   "  -S             show system objects too\n"
+		   "  -t TABLE       show info for named table\n"
+		   "  -U NAME        connect as specified database user\n"
+		   "  -V, --version  output version information, then exit\n"
+		   "  -x             extended (show additional columns)\n"
+		   "  -?, --help     show this help, then exit\n"
 		   "\nThe default action is to show all database OIDs.\n\n"
 		   "Report bugs to <pgsql-bugs@postgresql.org>.\n",
 		   progname, progname);
@@ -308,14 +310,29 @@ sql_conn(struct options * my_opts)
 	 */
 	do
 	{
+#define PARAMS_ARRAY_SIZE	7
+
+		const char *keywords[PARAMS_ARRAY_SIZE];
+		const char *values[PARAMS_ARRAY_SIZE];
+
+		keywords[0] = "host";
+		values[0] = my_opts->hostname;
+		keywords[1] = "port";
+		values[1] = my_opts->port;
+		keywords[2] = "user";
+		values[2] = my_opts->username;
+		keywords[3] = "password";
+		values[3] = password;
+		keywords[4] = "dbname";
+		values[4] = my_opts->dbname;
+		keywords[5] = "fallback_application_name";
+		values[5] = my_opts->progname;
+		keywords[6] = NULL;
+		values[6] = NULL;
+
 		new_pass = false;
-		conn = PQsetdbLogin(my_opts->hostname,
-							my_opts->port,
-							NULL,		/* options */
-							NULL,		/* tty */
-							my_opts->dbname,
-							my_opts->username,
-							password);
+		conn = PQconnectdbParams(keywords, values, true);
+
 		if (!conn)
 		{
 			fprintf(stderr, "%s: could not connect to database %s\n",

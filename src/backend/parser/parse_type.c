@@ -111,8 +111,8 @@ LookupTypeName(ParseState *pstate, const TypeName *typeName,
 		/*
 		 * Look up the field.
 		 *
-		 * XXX: As no lock is taken here, this might fail in the presence
-		 * of concurrent DDL.  But taking a lock would carry a performance
+		 * XXX: As no lock is taken here, this might fail in the presence of
+		 * concurrent DDL.	But taking a lock would carry a performance
 		 * penalty and would also require a permissions check.
 		 */
 		relid = RangeVarGetRelid(rel, NoLock, false);
@@ -705,12 +705,12 @@ parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p)
 		stmt->groupClause != NIL ||
 		stmt->havingClause != NULL ||
 		stmt->windowClause != NIL ||
-		stmt->withClause != NULL ||
 		stmt->valuesLists != NIL ||
 		stmt->sortClause != NIL ||
 		stmt->limitOffset != NULL ||
 		stmt->limitCount != NULL ||
 		stmt->lockingClause != NIL ||
+		stmt->withClause != NULL ||
 		stmt->op != SETOP_NONE)
 		goto fail;
 	if (list_length(stmt->targetList) != 1)

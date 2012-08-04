@@ -25,17 +25,19 @@ extern int	CheckPointTimeout;
 extern int	CheckPointWarning;
 extern double CheckPointCompletionTarget;
 
-extern void BackgroundWriterMain(void);
-extern void CheckpointerMain(void);
+extern void BackgroundWriterMain(void) __attribute__((noreturn));
+extern void CheckpointerMain(void) __attribute__((noreturn));
 
 extern void RequestCheckpoint(int flags);
 extern void CheckpointWriteDelay(int flags, double progress);
 
-extern bool ForwardFsyncRequest(RelFileNodeBackend rnode, ForkNumber forknum,
+extern bool ForwardFsyncRequest(RelFileNode rnode, ForkNumber forknum,
 					BlockNumber segno);
 extern void AbsorbFsyncRequests(void);
 
 extern Size CheckpointerShmemSize(void);
 extern void CheckpointerShmemInit(void);
+
+extern bool FirstCallSinceLastCheckpoint(void);
 
 #endif   /* _BGWRITER_H */

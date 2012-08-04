@@ -34,6 +34,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_default_acl.h"
 #include "catalog/pg_depend.h"
+#include "catalog/pg_event_trigger.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
@@ -56,6 +57,7 @@
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/event_trigger.h"
 #include "commands/extension.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
@@ -158,7 +160,8 @@ static const Oid object_classes[MAX_OCLASS] = {
 	ForeignServerRelationId,	/* OCLASS_FOREIGN_SERVER */
 	UserMappingRelationId,		/* OCLASS_USER_MAPPING */
 	DefaultAclRelationId,		/* OCLASS_DEFACL */
-	ExtensionRelationId			/* OCLASS_EXTENSION */
+	ExtensionRelationId,		/* OCLASS_EXTENSION */
+	EventTriggerRelationId		/* OCLASS_EVENT_TRIGGER */
 };
 
 
@@ -173,7 +176,7 @@ static void reportDependentObjects(const ObjectAddresses *targetObjects,
 					   int msglevel,
 					   const ObjectAddress *origObject);
 static void deleteOneObject(const ObjectAddress *object,
-							Relation depRel, int32 flags);
+				Relation depRel, int32 flags);
 static void doDeletion(const ObjectAddress *object, int flags);
 static void AcquireDeletionLock(const ObjectAddress *object, int flags);
 static void ReleaseDeletionLock(const ObjectAddress *object);
@@ -352,7 +355,8 @@ performMultipleDeletions(const ObjectAddresses *objects,
 	free_object_addresses(targetObjects);
 
 	/*
-	 * We closed depRel earlier in deleteOneObject if doing a drop concurrently
+	 * We closed depRel earlier in deleteOneObject if doing a drop
+	 * concurrently
 	 */
 	if ((flags & PERFORM_DELETION_CONCURRENTLY) != PERFORM_DELETION_CONCURRENTLY)
 		heap_close(depRel, RowExclusiveLock);
@@ -424,7 +428,7 @@ deleteWhatDependsOn(const ObjectAddress *object,
 		 * Since this function is currently only used to clean out temporary
 		 * schemas, we pass PERFORM_DELETION_INTERNAL here, indicating that
 		 * the operation is an automatic system operation rather than a user
-		 * action.  If, in the future, this function is used for other
+		 * action.	If, in the future, this function is used for other
 		 * purposes, we might need to revisit this.
 		 */
 		deleteOneObject(thisobj, depRel, PERFORM_DELETION_INTERNAL);
@@ -514,12 +518,12 @@ findDependentObjects(const ObjectAddress *object,
 	/*
 	 * The target object might be internally dependent on some other object
 	 * (its "owner"), and/or be a member of an extension (also considered its
-	 * owner).  If so, and if we aren't recursing from the owning object, we
+	 * owner).	If so, and if we aren't recursing from the owning object, we
 	 * have to transform this deletion request into a deletion request of the
 	 * owning object.  (We'll eventually recurse back to this object, but the
-	 * owning object has to be visited first so it will be deleted after.)
-	 * The way to find out about this is to scan the pg_depend entries that
-	 * show what this object depends on.
+	 * owning object has to be visited first so it will be deleted after.) The
+	 * way to find out about this is to scan the pg_depend entries that show
+	 * what this object depends on.
 	 */
 	ScanKeyInit(&key[0],
 				Anum_pg_depend_classid,
@@ -577,7 +581,7 @@ findDependentObjects(const ObjectAddress *object,
 					/*
 					 * Exception 1a: if the owning object is listed in
 					 * pendingObjects, just release the caller's lock and
-					 * return.  We'll eventually complete the DROP when we
+					 * return.	We'll eventually complete the DROP when we
 					 * reach that entry in the pending list.
 					 */
 					if (pendingObjects &&
@@ -593,8 +597,8 @@ findDependentObjects(const ObjectAddress *object,
 					 * Exception 1b: if the owning object is the extension
 					 * currently being created/altered, it's okay to continue
 					 * with the deletion.  This allows dropping of an
-					 * extension's objects within the extension's scripts,
-					 * as well as corner cases such as dropping a transient
+					 * extension's objects within the extension's scripts, as
+					 * well as corner cases such as dropping a transient
 					 * object created within such a script.
 					 */
 					if (creating_extension &&
@@ -618,8 +622,8 @@ findDependentObjects(const ObjectAddress *object,
 				 * it's okay to continue with the deletion.  This holds when
 				 * recursing from a whole object that includes the nominal
 				 * other end as a component, too.  Since there can be more
-				 * than one "owning" object, we have to allow matches that
-				 * are more than one level down in the stack.
+				 * than one "owning" object, we have to allow matches that are
+				 * more than one level down in the stack.
 				 */
 				if (stack_address_present_add_flags(&otherObject, 0, stack))
 					break;
@@ -630,7 +634,7 @@ findDependentObjects(const ObjectAddress *object,
 				 * owning object.
 				 *
 				 * First, release caller's lock on this object and get
-				 * deletion lock on the owning object.  (We must release
+				 * deletion lock on the owning object.	(We must release
 				 * caller's lock to avoid deadlock against a concurrent
 				 * deletion of the owning object.)
 				 */
@@ -999,7 +1003,8 @@ deleteOneObject(const ObjectAddress *object, Relation depRel, int flags)
 	/* DROP hook of the objects being removed */
 	if (object_access_hook)
 	{
-		ObjectAccessDrop	drop_arg;
+		ObjectAccessDrop drop_arg;
+
 		drop_arg.dropflags = flags;
 		InvokeObjectAccessHook(OAT_DROP, object->classId, object->objectId,
 							   object->objectSubId, &drop_arg);
@@ -1049,8 +1054,8 @@ deleteOneObject(const ObjectAddress *object, Relation depRel, int flags)
 									 object->objectSubId);
 
 	/*
-	 * Close depRel if we are doing a drop concurrently because it
-	 * commits the transaction, so we don't want dangling references.
+	 * Close depRel if we are doing a drop concurrently because it commits the
+	 * transaction, so we don't want dangling references.
 	 */
 	if ((flags & PERFORM_DELETION_CONCURRENTLY) == PERFORM_DELETION_CONCURRENTLY)
 		heap_close(depRel, RowExclusiveLock);
@@ -1093,8 +1098,8 @@ doDeletion(const ObjectAddress *object, int flags)
 
 				if (relKind == RELKIND_INDEX)
 				{
-					bool concurrent = ((flags & PERFORM_DELETION_CONCURRENTLY)
-													== PERFORM_DELETION_CONCURRENTLY);
+					bool		concurrent = ((flags & PERFORM_DELETION_CONCURRENTLY)
+										   == PERFORM_DELETION_CONCURRENTLY);
 
 					Assert(object->objectSubId == 0);
 					index_drop(object->objectId, concurrent);
@@ -1109,6 +1114,10 @@ doDeletion(const ObjectAddress *object, int flags)
 				}
 				break;
 			}
+
+		case OCLASS_EVENT_TRIGGER:
+			RemoveEventTriggerById(object->objectId);
+			break;
 
 		case OCLASS_PROC:
 			RemoveFunctionById(object->objectId);
@@ -2267,6 +2276,9 @@ getObjectClass(const ObjectAddress *object)
 
 		case ExtensionRelationId:
 			return OCLASS_EXTENSION;
+
+		case EventTriggerRelationId:
+			return OCLASS_EVENT_TRIGGER;
 	}
 
 	/* shouldn't get here */
@@ -2901,6 +2913,21 @@ getObjectDescription(const ObjectAddress *object)
 				break;
 			}
 
+        case OCLASS_EVENT_TRIGGER:
+			{
+				HeapTuple	tup;
+
+				tup = SearchSysCache1(EVENTTRIGGEROID,
+									  ObjectIdGetDatum(object->objectId));
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "cache lookup failed for event trigger %u",
+						 object->objectId);
+				appendStringInfo(&buffer, _("event trigger %s"),
+					 NameStr(((Form_pg_event_trigger) GETSTRUCT(tup))->evtname));
+				ReleaseSysCache(tup);
+				break;
+			}
+
 		default:
 			appendStringInfo(&buffer, "unrecognized object %u %u %d",
 							 object->classId,
@@ -2964,10 +2991,6 @@ getRelationDescription(StringInfo buffer, Oid relid)
 			break;
 		case RELKIND_SEQUENCE:
 			appendStringInfo(buffer, _("sequence %s"),
-							 relname);
-			break;
-		case RELKIND_UNCATALOGED:
-			appendStringInfo(buffer, _("uncataloged table %s"),
 							 relname);
 			break;
 		case RELKIND_TOASTVALUE:

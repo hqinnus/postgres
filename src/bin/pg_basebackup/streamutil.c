@@ -65,6 +65,11 @@ xmalloc0(int size)
 }
 
 
+/*
+ * Connect to the server. Returns a valid PGconn pointer if connected,
+ * or NULL on non-permanent error. On permanent error, the function will
+ * call exit(1) directly.
+ */
 PGconn *
 GetConnection(void)
 {
@@ -138,6 +143,17 @@ GetConnection(void)
 
 		tmpconn = PQconnectdbParams(keywords, values, true);
 
+		/*
+		 * If there is too little memory even to allocate the PGconn object
+		 * and PQconnectdbParams returns NULL, we call exit(1) directly.
+		 */
+		if (!tmpconn)
+		{
+			fprintf(stderr, _("%s: could not connect to server\n"),
+					progname);
+			exit(1);
+		}
+
 		if (PQstatus(tmpconn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(tmpconn) &&
 			dbgetpassword != -1)
@@ -151,7 +167,10 @@ GetConnection(void)
 		{
 			fprintf(stderr, _("%s: could not connect to server: %s\n"),
 					progname, PQerrorMessage(tmpconn));
-			exit(1);
+			PQfinish(tmpconn);
+			free(values);
+			free(keywords);
+			return NULL;
 		}
 
 		/* Connection ok! */
@@ -159,13 +178,14 @@ GetConnection(void)
 		free(keywords);
 
 		/*
-		 * Ensure we have the same value of integer timestamps as the
-		 * server we are connecting to.
+		 * Ensure we have the same value of integer timestamps as the server
+		 * we are connecting to.
 		 */
 		tmpparam = PQparameterStatus(tmpconn, "integer_datetimes");
 		if (!tmpparam)
 		{
-			fprintf(stderr, _("%s: could not determine server setting for integer_datetimes\n"),
+			fprintf(stderr,
+					_("%s: could not determine server setting for integer_datetimes\n"),
 					progname);
 			PQfinish(tmpconn);
 			exit(1);
@@ -177,7 +197,8 @@ GetConnection(void)
 		if (strcmp(tmpparam, "off") != 0)
 #endif
 		{
-			fprintf(stderr, _("%s: integer_datetimes compile flag does not match server\n"),
+			fprintf(stderr,
+			 _("%s: integer_datetimes compile flag does not match server\n"),
 					progname);
 			PQfinish(tmpconn);
 			exit(1);

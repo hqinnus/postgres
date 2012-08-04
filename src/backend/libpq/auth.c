@@ -316,8 +316,8 @@ ClientAuthentication(Port *port)
 	/*
 	 * Get the authentication method to use for this frontend/database
 	 * combination.  Note: we do not parse the file at this point; this has
-	 * already been done elsewhere.  hba.c dropped an error message
-	 * into the server logfile if parsing the hba config file failed.
+	 * already been done elsewhere.  hba.c dropped an error message into the
+	 * server logfile if parsing the hba config file failed.
 	 */
 	hba_getauthmethod(port);
 
@@ -1098,8 +1098,6 @@ pg_GSS_recvauth(Port *port)
 			/*
 			 * Negotiation generated data to be sent to the client.
 			 */
-			OM_uint32	lmin_s;
-
 			elog(DEBUG4, "sending GSS response token of length %u",
 				 (unsigned int) port->gss->outbuf.length);
 
@@ -1110,8 +1108,6 @@ pg_GSS_recvauth(Port *port)
 
 		if (maj_stat != GSS_S_COMPLETE && maj_stat != GSS_S_CONTINUE_NEEDED)
 		{
-			OM_uint32	lmin_s;
-
 			gss_delete_sec_context(&lmin_s, &port->gss->ctx, GSS_C_NO_BUFFER);
 			pg_GSS_error(ERROR,
 					   gettext_noop("accepting GSS security context failed"),
@@ -1365,10 +1361,10 @@ pg_SSPI_recvauth(Port *port)
 		}
 
 		/*
-		 * Overwrite the current context with the one we just received.
-		 * If sspictx is NULL it was the first loop and we need to allocate
-		 * a buffer for it. On subsequent runs, we can just overwrite the
-		 * buffer contents since the size does not change.
+		 * Overwrite the current context with the one we just received. If
+		 * sspictx is NULL it was the first loop and we need to allocate a
+		 * buffer for it. On subsequent runs, we can just overwrite the buffer
+		 * contents since the size does not change.
 		 */
 		if (sspictx == NULL)
 		{
@@ -1437,8 +1433,8 @@ pg_SSPI_recvauth(Port *port)
 
 	if (!GetTokenInformation(token, TokenUser, NULL, 0, &retlen) && GetLastError() != 122)
 		ereport(ERROR,
-			 (errmsg_internal("could not get token user size: error code %lu",
-							  GetLastError())));
+			(errmsg_internal("could not get token user size: error code %lu",
+							 GetLastError())));
 
 	tokenuser = malloc(retlen);
 	if (tokenuser == NULL)
@@ -1453,8 +1449,8 @@ pg_SSPI_recvauth(Port *port)
 	if (!LookupAccountSid(NULL, tokenuser->User.Sid, accountname, &accountnamesize,
 						  domainname, &domainnamesize, &accountnameuse))
 		ereport(ERROR,
-			  (errmsg_internal("could not look up account SID: error code %lu",
-							   GetLastError())));
+			(errmsg_internal("could not look up account SID: error code %lu",
+							 GetLastError())));
 
 	free(tokenuser);
 

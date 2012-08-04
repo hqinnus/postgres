@@ -766,9 +766,9 @@ inheritance_planner(PlannerInfo *root)
 
 		/*
 		 * The rowMarks list might contain references to subquery RTEs, so
-		 * make a copy that we can apply ChangeVarNodes to.  (Fortunately,
-		 * the executor doesn't need to see the modified copies --- we can
-		 * just pass it the original rowMarks list.)
+		 * make a copy that we can apply ChangeVarNodes to.  (Fortunately, the
+		 * executor doesn't need to see the modified copies --- we can just
+		 * pass it the original rowMarks list.)
 		 */
 		subroot.rowMarks = (List *) copyObject(root->rowMarks);
 
@@ -784,10 +784,11 @@ inheritance_planner(PlannerInfo *root)
 
 		/*
 		 * If this isn't the first child Query, generate duplicates of all
-		 * subquery RTEs, and adjust Var numbering to reference the duplicates.
-		 * To simplify the loop logic, we scan the original rtable not the
-		 * copy just made by adjust_appendrel_attrs; that should be OK since
-		 * subquery RTEs couldn't contain any references to the target rel.
+		 * subquery RTEs, and adjust Var numbering to reference the
+		 * duplicates. To simplify the loop logic, we scan the original rtable
+		 * not the copy just made by adjust_appendrel_attrs; that should be OK
+		 * since subquery RTEs couldn't contain any references to the target
+		 * rel.
 		 */
 		if (final_rtable != NIL)
 		{
@@ -800,7 +801,7 @@ inheritance_planner(PlannerInfo *root)
 
 				if (rte->rtekind == RTE_SUBQUERY)
 				{
-					Index	newrti;
+					Index		newrti;
 
 					/*
 					 * The RTE can't contain any references to its own RT
@@ -849,7 +850,7 @@ inheritance_planner(PlannerInfo *root)
 		else
 			final_rtable = list_concat(final_rtable,
 									   list_copy_tail(subroot.parse->rtable,
-													  list_length(final_rtable)));
+												 list_length(final_rtable)));
 
 		/*
 		 * We need to collect all the RelOptInfos from all child plans into
@@ -1044,7 +1045,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		double		sub_limit_tuples;
 		AttrNumber *groupColIdx = NULL;
 		bool		need_tlist_eval = true;
-		QualCost	tlist_cost;
 		Path	   *cheapest_path;
 		Path	   *sorted_path;
 		Path	   *best_path;
@@ -1317,18 +1317,17 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				need_sort_for_grouping = true;
 
 				/*
-				 * Always override create_plan's tlist, so that we don't
-				 * sort useless data from a "physical" tlist.
+				 * Always override create_plan's tlist, so that we don't sort
+				 * useless data from a "physical" tlist.
 				 */
 				need_tlist_eval = true;
 			}
 
 			/*
-			 * create_plan returns a plan with just a "flat" tlist of
-			 * required Vars.  Usually we need to insert the sub_tlist as the
-			 * tlist of the top plan node.	However, we can skip that if we
-			 * determined that whatever create_plan chose to return will be
-			 * good enough.
+			 * create_plan returns a plan with just a "flat" tlist of required
+			 * Vars.  Usually we need to insert the sub_tlist as the tlist of
+			 * the top plan node.  However, we can skip that if we determined
+			 * that whatever create_plan chose to return will be good enough.
 			 */
 			if (need_tlist_eval)
 			{
@@ -1355,27 +1354,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 
 				/*
 				 * Also, account for the cost of evaluation of the sub_tlist.
-				 *
-				 * Up to now, we have only been dealing with "flat" tlists,
-				 * containing just Vars.  So their evaluation cost is zero
-				 * according to the model used by cost_qual_eval() (or if you
-				 * prefer, the cost is factored into cpu_tuple_cost).  Thus we
-				 * can avoid accounting for tlist cost throughout
-				 * query_planner() and subroutines.  But now we've inserted a
-				 * tlist that might contain actual operators, sub-selects, etc
-				 * --- so we'd better account for its cost.
-				 *
-				 * Below this point, any tlist eval cost for added-on nodes
-				 * should be accounted for as we create those nodes.
-				 * Presently, of the node types we can add on, only Agg,
-				 * WindowAgg, and Group project new tlists (the rest just copy
-				 * their input tuples) --- so make_agg(), make_windowagg() and
-				 * make_group() are responsible for computing the added cost.
+				 * See comments for add_tlist_costs_to_plan() for more info.
 				 */
-				cost_qual_eval(&tlist_cost, sub_tlist, root);
-				result_plan->startup_cost += tlist_cost.startup;
-				result_plan->total_cost += tlist_cost.startup +
-					tlist_cost.per_tuple * result_plan->plan_rows;
+				add_tlist_costs_to_plan(root, result_plan, sub_tlist);
 			}
 			else
 			{
@@ -1546,7 +1527,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 *
 			 * Note: it's essential here to use PVC_INCLUDE_AGGREGATES so that
 			 * Vars mentioned only in aggregate expressions aren't pulled out
-			 * as separate targetlist entries.  Otherwise we could be putting
+			 * as separate targetlist entries.	Otherwise we could be putting
 			 * ungrouped Vars directly into an Agg node's tlist, resulting in
 			 * undefined behavior.
 			 */
@@ -1813,6 +1794,61 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	root->query_pathkeys = current_pathkeys;
 
 	return result_plan;
+}
+
+/*
+ * add_tlist_costs_to_plan
+ *
+ * Estimate the execution costs associated with evaluating the targetlist
+ * expressions, and add them to the cost estimates for the Plan node.
+ *
+ * If the tlist contains set-returning functions, also inflate the Plan's cost
+ * and plan_rows estimates accordingly.  (Hence, this must be called *after*
+ * any logic that uses plan_rows to, eg, estimate qual evaluation costs.)
+ *
+ * Note: during initial stages of planning, we mostly consider plan nodes with
+ * "flat" tlists, containing just Vars.  So their evaluation cost is zero
+ * according to the model used by cost_qual_eval() (or if you prefer, the cost
+ * is factored into cpu_tuple_cost).  Thus we can avoid accounting for tlist
+ * cost throughout query_planner() and subroutines.  But once we apply a
+ * tlist that might contain actual operators, sub-selects, etc, we'd better
+ * account for its cost.  Any set-returning functions in the tlist must also
+ * affect the estimated rowcount.
+ *
+ * Once grouping_planner() has applied a general tlist to the topmost
+ * scan/join plan node, any tlist eval cost for added-on nodes should be
+ * accounted for as we create those nodes.  Presently, of the node types we
+ * can add on later, only Agg, WindowAgg, and Group project new tlists (the
+ * rest just copy their input tuples) --- so make_agg(), make_windowagg() and
+ * make_group() are responsible for calling this function to account for their
+ * tlist costs.
+ */
+void
+add_tlist_costs_to_plan(PlannerInfo *root, Plan *plan, List *tlist)
+{
+	QualCost	tlist_cost;
+	double		tlist_rows;
+
+	cost_qual_eval(&tlist_cost, tlist, root);
+	plan->startup_cost += tlist_cost.startup;
+	plan->total_cost += tlist_cost.startup +
+		tlist_cost.per_tuple * plan->plan_rows;
+
+	tlist_rows = tlist_returns_set_rows(tlist);
+	if (tlist_rows > 1)
+	{
+		/*
+		 * We assume that execution costs of the tlist proper were all
+		 * accounted for by cost_qual_eval.  However, it still seems
+		 * appropriate to charge something more for the executor's general
+		 * costs of processing the added tuples.  The cost is probably less
+		 * than cpu_tuple_cost, though, so we arbitrarily use half of that.
+		 */
+		plan->total_cost += plan->plan_rows * (tlist_rows - 1) *
+			cpu_tuple_cost / 2;
+
+		plan->plan_rows *= tlist_rows;
+	}
 }
 
 /*
@@ -2653,8 +2689,8 @@ make_subplanTargetList(PlannerInfo *root,
 	}
 
 	/*
-	 * Otherwise, we must build a tlist containing all grouping columns,
-	 * plus any other Vars mentioned in the targetlist and HAVING qual.
+	 * Otherwise, we must build a tlist containing all grouping columns, plus
+	 * any other Vars mentioned in the targetlist and HAVING qual.
 	 */
 	sub_tlist = NIL;
 	non_group_cols = NIL;
@@ -2705,8 +2741,8 @@ make_subplanTargetList(PlannerInfo *root,
 			else
 			{
 				/*
-				 * Non-grouping column, so just remember the expression
-				 * for later call to pull_var_clause.  There's no need for
+				 * Non-grouping column, so just remember the expression for
+				 * later call to pull_var_clause.  There's no need for
 				 * pull_var_clause to examine the TargetEntry node itself.
 				 */
 				non_group_cols = lappend(non_group_cols, tle->expr);
@@ -2733,7 +2769,7 @@ make_subplanTargetList(PlannerInfo *root,
 	 * add them to the result tlist if not already present.  (A Var used
 	 * directly as a GROUP BY item will be present already.)  Note this
 	 * includes Vars used in resjunk items, so we are covering the needs of
-	 * ORDER BY and window specifications.  Vars used within Aggrefs will be
+	 * ORDER BY and window specifications.	Vars used within Aggrefs will be
 	 * pulled out here, too.
 	 */
 	non_group_vars = pull_var_clause((Node *) non_group_cols,

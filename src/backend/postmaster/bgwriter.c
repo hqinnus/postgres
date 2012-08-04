@@ -74,11 +74,6 @@ int			BgWriterDelay = 200;
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t shutdown_requested = false;
 
-/*
- * Private state
- */
-static bool am_bg_writer = false;
-
 /* Signal handlers */
 
 static void bg_quickdie(SIGNAL_ARGS);
@@ -90,8 +85,8 @@ static void bgwriter_sigusr1_handler(SIGNAL_ARGS);
 /*
  * Main entry point for bgwriter process
  *
- * This is invoked from BootstrapMain, which has already created the basic
- * execution environment, but not enabled signals yet.
+ * This is invoked from AuxiliaryProcessMain, which has already created the
+ * basic execution environment, but not enabled signals yet.
  */
 void
 BackgroundWriterMain(void)
@@ -99,8 +94,6 @@ BackgroundWriterMain(void)
 	sigjmp_buf	local_sigjmp_buf;
 	MemoryContext bgwriter_context;
 	bool		prev_hibernate;
-
-	am_bg_writer = true;
 
 	/*
 	 * If possible, make this process a group leader, so that the postmaster
@@ -121,7 +114,7 @@ BackgroundWriterMain(void)
 	 */
 	pqsignal(SIGHUP, BgSigHupHandler);	/* set flag to read config file */
 	pqsignal(SIGINT, SIG_IGN);
-	pqsignal(SIGTERM, ReqShutdownHandler); 	/* shutdown */
+	pqsignal(SIGTERM, ReqShutdownHandler);		/* shutdown */
 	pqsignal(SIGQUIT, bg_quickdie);		/* hard crash time */
 	pqsignal(SIGALRM, SIG_IGN);
 	pqsignal(SIGPIPE, SIG_IGN);
@@ -244,8 +237,8 @@ BackgroundWriterMain(void)
 	 */
 	for (;;)
 	{
-		bool	can_hibernate;
-		int		rc;
+		bool		can_hibernate;
+		int			rc;
 
 		/* Clear any already-pending wakeups */
 		ResetLatch(&MyProc->procLatch);
@@ -276,6 +269,15 @@ BackgroundWriterMain(void)
 		 */
 		pgstat_send_bgwriter();
 
+		if (FirstCallSinceLastCheckpoint())
+		{
+			/*
+			 * After any checkpoint, close all smgr files.	This is so we
+			 * won't hang onto smgr references to deleted files indefinitely.
+			 */
+			smgrcloseall();
+		}
+
 		/*
 		 * Sleep until we are signaled or BgWriterDelay has elapsed.
 		 *
@@ -288,7 +290,7 @@ BackgroundWriterMain(void)
 		 */
 		rc = WaitLatch(&MyProc->procLatch,
 					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   BgWriterDelay /* ms */);
+					   BgWriterDelay /* ms */ );
 
 		/*
 		 * If no latch event and BgBufferSync says nothing's happening, extend
@@ -305,7 +307,7 @@ BackgroundWriterMain(void)
 		 * and the time we call StrategyNotifyBgWriter.  While it's not
 		 * critical that we not hibernate anyway, we try to reduce the odds of
 		 * that by only hibernating when BgBufferSync says nothing's happening
-		 * for two consecutive cycles.  Also, we mitigate any possible
+		 * for two consecutive cycles.	Also, we mitigate any possible
 		 * consequences of a missed wakeup by not hibernating forever.
 		 */
 		if (rc == WL_TIMEOUT && can_hibernate && prev_hibernate)

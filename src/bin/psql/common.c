@@ -462,7 +462,7 @@ AcceptResult(const PGresult *result)
 
 			default:
 				OK = false;
-				psql_error("unexpected PQresultStatus (%d)",
+				psql_error("unexpected PQresultStatus: %d\n",
 						   PQresultStatus(result));
 				break;
 		}
@@ -686,7 +686,7 @@ ProcessResult(PGresult **results)
 			default:
 				/* AcceptResult() should have caught anything else. */
 				is_copy = false;
-				psql_error("unexpected PQresultStatus (%d)", result_status);
+				psql_error("unexpected PQresultStatus: %d\n", result_status);
 				break;
 		}
 
@@ -707,7 +707,7 @@ ProcessResult(PGresult **results)
 
 			/*
 			 * Call PQgetResult() once more.  In the typical case of a
-			 * single-command string, it will return NULL.  Otherwise, we'll
+			 * single-command string, it will return NULL.	Otherwise, we'll
 			 * have other results to process that may include other COPYs.
 			 */
 			PQclear(*results);
@@ -816,7 +816,7 @@ PrintQueryResults(PGresult *results)
 
 		default:
 			success = false;
-			psql_error("unexpected PQresultStatus (%d)",
+			psql_error("unexpected PQresultStatus: %d\n",
 					   PQresultStatus(results));
 			break;
 	}
@@ -982,11 +982,12 @@ SendQuery(const char *query)
 				break;
 
 			case PQTRANS_INTRANS:
+
 				/*
 				 * Do nothing if they are messing with savepoints themselves:
-				 * If the user did RELEASE or ROLLBACK, our savepoint is
-				 * gone. If they issued a SAVEPOINT, releasing ours would
-				 * remove theirs.
+				 * If the user did RELEASE or ROLLBACK, our savepoint is gone.
+				 * If they issued a SAVEPOINT, releasing ours would remove
+				 * theirs.
 				 */
 				if (results &&
 					(strcmp(PQcmdStatus(results), "SAVEPOINT") == 0 ||

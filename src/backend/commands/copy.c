@@ -121,6 +121,9 @@ typedef struct CopyStateData
 	bool	   *force_quote_flags;		/* per-column CSV FQ flags */
 	List	   *force_notnull;	/* list of column names */
 	bool	   *force_notnull_flags;	/* per-column CSV FNN flags */
+	bool		convert_selectively;	/* do selective binary conversion? */
+	List	   *convert_select;	/* list of column names (can be NIL) */
+	bool	   *convert_select_flags;	/* per-column CSV/TEXT CS flags */
 
 	/* these are just for error messages, see CopyFromErrorCallback */
 	const char *cur_relname;	/* table name for error messages */
@@ -150,7 +153,7 @@ typedef struct CopyStateData
 	Oid		   *typioparams;	/* array of element types for in_functions */
 	int		   *defmap;			/* array of default att numbers */
 	ExprState **defexprs;		/* array of default att expressions */
-	bool		volatile_defexprs; /* is any of defexprs volatile? */
+	bool		volatile_defexprs;		/* is any of defexprs volatile? */
 
 	/*
 	 * These variables are used to reduce overhead in textual COPY FROM.
@@ -566,11 +569,11 @@ CopyGetData(CopyState cstate, void *databuf, int minread, int maxread)
 					if (mtype == EOF)
 						ereport(ERROR,
 								(errcode(ERRCODE_CONNECTION_FAILURE),
-							 errmsg("unexpected EOF on client connection with an open transaction")));
+								 errmsg("unexpected EOF on client connection with an open transaction")));
 					if (pq_getmessage(cstate->fe_msgbuf, 0))
 						ereport(ERROR,
 								(errcode(ERRCODE_CONNECTION_FAILURE),
-							 errmsg("unexpected EOF on client connection with an open transaction")));
+								 errmsg("unexpected EOF on client connection with an open transaction")));
 					switch (mtype)
 					{
 						case 'd':		/* CopyData */
@@ -961,6 +964,26 @@ ProcessCopyOptions(CopyState cstate,
 						 errmsg("argument to option \"%s\" must be a list of column names",
 								defel->defname)));
 		}
+		else if (strcmp(defel->defname, "convert_selectively") == 0)
+		{
+			/*
+			 * Undocumented, not-accessible-from-SQL option: convert only
+			 * the named columns to binary form, storing the rest as NULLs.
+			 * It's allowed for the column list to be NIL.
+			 */
+			if (cstate->convert_selectively)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			cstate->convert_selectively = true;
+			if (defel->arg == NULL || IsA(defel->arg, List))
+				cstate->convert_select = (List *) defel->arg;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("argument to option \"%s\" must be a list of column names",
+								defel->defname)));
+		}
 		else if (strcmp(defel->defname, "encoding") == 0)
 		{
 			if (cstate->file_encoding >= 0)
@@ -1304,6 +1327,29 @@ BeginCopy(bool is_from,
 				errmsg("FORCE NOT NULL column \"%s\" not referenced by COPY",
 					   NameStr(tupDesc->attrs[attnum - 1]->attname))));
 			cstate->force_notnull_flags[attnum - 1] = true;
+		}
+	}
+
+	/* Convert convert_selectively name list to per-column flags */
+	if (cstate->convert_selectively)
+	{
+		List	   *attnums;
+		ListCell   *cur;
+
+		cstate->convert_select_flags = (bool *) palloc0(num_phys_attrs * sizeof(bool));
+
+		attnums = CopyGetAttnums(tupDesc, cstate->rel, cstate->convert_select);
+
+		foreach(cur, attnums)
+		{
+			int			attnum = lfirst_int(cur);
+
+			if (!list_member_int(cstate->attnumlist, attnum))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+						 errmsg_internal("selected column \"%s\" not referenced by COPY",
+										 NameStr(tupDesc->attrs[attnum - 1]->attname))));
+			cstate->convert_select_flags[attnum - 1] = true;
 		}
 	}
 
@@ -1861,6 +1907,7 @@ CopyFrom(CopyState cstate)
 	uint64		processed = 0;
 	bool		useHeapMultiInsert;
 	int			nBufferedTuples = 0;
+
 #define MAX_BUFFERED_TUPLES 1000
 	HeapTuple  *bufferedTuples = NULL;	/* initialize to silence warning */
 	Size		bufferedTuplesSize = 0;
@@ -1968,8 +2015,8 @@ CopyFrom(CopyState cstate)
 	 * processed and prepared for insertion are not there.
 	 */
 	if ((resultRelInfo->ri_TrigDesc != NULL &&
-		(resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
-		 resultRelInfo->ri_TrigDesc->trig_insert_instead_row)) ||
+		 (resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
+		  resultRelInfo->ri_TrigDesc->trig_insert_instead_row)) ||
 		cstate->volatile_defexprs)
 	{
 		useHeapMultiInsert = false;
@@ -2162,8 +2209,8 @@ CopyFromInsertBatch(CopyState cstate, EState *estate, CommandId mycid,
 	int			i;
 
 	/*
-	 * heap_multi_insert leaks memory, so switch to short-lived memory
-	 * context before calling it.
+	 * heap_multi_insert leaks memory, so switch to short-lived memory context
+	 * before calling it.
 	 */
 	oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 	heap_multi_insert(cstate->rel,
@@ -2175,14 +2222,14 @@ CopyFromInsertBatch(CopyState cstate, EState *estate, CommandId mycid,
 	MemoryContextSwitchTo(oldcontext);
 
 	/*
-	 * If there are any indexes, update them for all the inserted tuples,
-	 * and run AFTER ROW INSERT triggers.
+	 * If there are any indexes, update them for all the inserted tuples, and
+	 * run AFTER ROW INSERT triggers.
 	 */
 	if (resultRelInfo->ri_NumIndices > 0)
 	{
 		for (i = 0; i < nBufferedTuples; i++)
 		{
-			List *recheckIndexes;
+			List	   *recheckIndexes;
 
 			ExecStoreTuple(bufferedTuples[i], myslot, InvalidBuffer, false);
 			recheckIndexes =
@@ -2194,6 +2241,7 @@ CopyFromInsertBatch(CopyState cstate, EState *estate, CommandId mycid,
 			list_free(recheckIndexes);
 		}
 	}
+
 	/*
 	 * There's no indexes, but see if we need to run AFTER ROW INSERT triggers
 	 * anyway.
@@ -2562,6 +2610,13 @@ NextCopyFrom(CopyState cstate, ExprContext *econtext,
 						 errmsg("missing data for column \"%s\"",
 								NameStr(attr[m]->attname))));
 			string = field_strings[fieldno++];
+
+			if (cstate->convert_select_flags &&
+				!cstate->convert_select_flags[m])
+			{
+				/* ignore input field, leaving column as NULL */
+				continue;
+			}
 
 			if (cstate->csv_mode && string == NULL &&
 				cstate->force_notnull_flags[m])

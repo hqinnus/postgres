@@ -338,7 +338,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			break;
 		case T_IndexOnlyScan:
 			{
-				IndexOnlyScan  *splan = (IndexOnlyScan *) plan;
+				IndexOnlyScan *splan = (IndexOnlyScan *) plan;
 
 				return set_indexonlyscan_references(root, splan, rtoffset);
 			}
@@ -584,9 +584,9 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 							 lcrr, splan->resultRelations,
 							 lcp, splan->plans)
 					{
-						List   *rlist = (List *) lfirst(lcrl);
-						Index	resultrel = lfirst_int(lcrr);
-						Plan   *subplan = (Plan *) lfirst(lcp);
+						List	   *rlist = (List *) lfirst(lcrl);
+						Index		resultrel = lfirst_int(lcrr);
+						Plan	   *subplan = (Plan *) lfirst(lcp);
 
 						rlist = set_returning_clause_references(root,
 																rlist,
@@ -601,7 +601,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					 * Set up the visible plan targetlist as being the same as
 					 * the first RETURNING list. This is for the use of
 					 * EXPLAIN; the executor won't pay any attention to the
-					 * targetlist.  We postpone this step until here so that
+					 * targetlist.	We postpone this step until here so that
 					 * we don't have to do set_returning_clause_references()
 					 * twice on identical targetlists.
 					 */
@@ -1896,7 +1896,7 @@ record_plan_function_dependency(PlannerInfo *root, Oid funcid)
 		 */
 		inval_item->cacheId = PROCOID;
 		inval_item->hashValue = GetSysCacheHashValue1(PROCOID,
-													  ObjectIdGetDatum(funcid));
+												   ObjectIdGetDatum(funcid));
 
 		root->glob->invalItems = lappend(root->glob->invalItems, inval_item);
 	}
@@ -1948,7 +1948,7 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 		Query	   *query = (Query *) node;
 		ListCell   *lc;
 
-		while (query->commandType == CMD_UTILITY)
+		if (query->commandType == CMD_UTILITY)
 		{
 			/*
 			 * Ignore utility statements, except those (such as EXPLAIN) that

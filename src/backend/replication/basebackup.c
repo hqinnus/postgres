@@ -141,6 +141,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 			ti->size = opt->progress ? sendDir(linkpath, strlen(linkpath), true) : -1;
 			tablespaces = lappend(tablespaces, ti);
 #else
+
 			/*
 			 * If the platform does not have symbolic links, it should not be
 			 * possible to have tablespaces - clearly somebody else created
@@ -148,7 +149,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 			 */
 			ereport(WARNING,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("tablespaces are not supported on this platform")));
+				  errmsg("tablespaces are not supported on this platform")));
 #endif
 		}
 
@@ -220,10 +221,8 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 		 * We've left the last tar file "open", so we can now append the
 		 * required WAL files to it.
 		 */
-		uint32		logid,
-					logseg;
-		uint32		endlogid,
-					endlogseg;
+		XLogSegNo	logsegno;
+		XLogSegNo	endlogsegno;
 		struct stat statbuf;
 
 		MemSet(&statbuf, 0, sizeof(statbuf));
@@ -235,8 +234,8 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 		statbuf.st_size = XLogSegSize;
 		statbuf.st_mtime = time(NULL);
 
-		XLByteToSeg(startptr, logid, logseg);
-		XLByteToPrevSeg(endptr, endlogid, endlogseg);
+		XLByteToSeg(startptr, logsegno);
+		XLByteToPrevSeg(endptr, endlogsegno);
 
 		while (true)
 		{
@@ -244,7 +243,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 			char		fn[MAXPGPATH];
 			int			i;
 
-			XLogFilePath(fn, ThisTimeLineID, logid, logseg);
+			XLogFilePath(fn, ThisTimeLineID, logsegno);
 			_tarWriteHeader(fn, NULL, &statbuf);
 
 			/* Send the actual WAL file contents, block-by-block */
@@ -253,8 +252,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 				char		buf[TAR_SEND_SIZE];
 				XLogRecPtr	ptr;
 
-				ptr.xlogid = logid;
-				ptr.xrecoff = logseg * XLogSegSize + TAR_SEND_SIZE * i;
+				XLogSegNoOffsetToRecPtr(logsegno, TAR_SEND_SIZE * i, ptr);
 
 				/*
 				 * Some old compilers, e.g. gcc 2.95.3/x86, think that passing
@@ -276,11 +274,10 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 
 
 			/* Advance to the next WAL file */
-			NextLogSeg(logid, logseg);
+			logsegno++;
 
 			/* Have we reached our stop position yet? */
-			if (logid > endlogid ||
-				(logid == endlogid && logseg > endlogseg))
+			if (logsegno > endlogsegno)
 				break;
 		}
 
@@ -500,7 +497,7 @@ SendXlogRecPtrResult(XLogRecPtr ptr)
 	StringInfoData buf;
 	char		str[MAXFNAMELEN];
 
-	snprintf(str, sizeof(str), "%X/%X", ptr.xlogid, ptr.xrecoff);
+	snprintf(str, sizeof(str), "%X/%X", (uint32) (ptr >> 32), (uint32) ptr);
 
 	pq_beginmessage(&buf, 'T'); /* RowDescription */
 	pq_sendint(&buf, 1, 2);		/* 1 field */
@@ -661,9 +658,9 @@ sendDir(char *path, int basepathlen, bool sizeonly)
 		/* Allow symbolic links in pg_tblspc only */
 		if (strcmp(path, "./pg_tblspc") == 0 &&
 #ifndef WIN32
-				 S_ISLNK(statbuf.st_mode)
+			S_ISLNK(statbuf.st_mode)
 #else
-				 pgwin32_is_junction(pathbuf)
+			pgwin32_is_junction(pathbuf)
 #endif
 			)
 		{
@@ -687,6 +684,7 @@ sendDir(char *path, int basepathlen, bool sizeonly)
 				_tarWriteHeader(pathbuf + basepathlen + 1, linkpath, &statbuf);
 			size += 512;		/* Size of the header just added */
 #else
+
 			/*
 			 * If the platform does not have symbolic links, it should not be
 			 * possible to have tablespaces - clearly somebody else created
@@ -694,9 +692,9 @@ sendDir(char *path, int basepathlen, bool sizeonly)
 			 */
 			ereport(WARNING,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("tablespaces are not supported on this platform")));
+				  errmsg("tablespaces are not supported on this platform")));
 			continue;
-#endif /* HAVE_READLINK */
+#endif   /* HAVE_READLINK */
 		}
 		else if (S_ISDIR(statbuf.st_mode))
 		{
