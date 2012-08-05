@@ -778,9 +778,6 @@ _equalFromExpr(const FromExpr *a, const FromExpr *b)
 	return true;
 }
 
-/*
- * This is not complete yet.
- */
 static bool
 _equalTableSampleInfo(TableSampleInfo *a, TableSampleInfo *b)
 {

@@ -1123,11 +1123,11 @@ create_samplescan_plan(PlannerInfo *root, Path *best_path,
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
 
 	/* Replace any outer-relation variables with nestloop params */
-	//if (best_path->param_info)
-	//{
-	//	scan_clauses = (List *)
-	//		replace_nestloop_params(root, (Node *) scan_clauses);
-	//}
+	if (best_path->param_info)
+	{
+		scan_clauses = (List *)
+			replace_nestloop_params(root, (Node *) scan_clauses);
+	}
 
 	scan_plan = make_samplescan(root, tlist,
 							 scan_clauses,

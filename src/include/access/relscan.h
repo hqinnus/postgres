@@ -53,6 +53,9 @@ typedef struct HeapScanDescData
 	OffsetNumber rs_vistuples[MaxHeapTuplesPerPage];	/* their offsets */
 
 	/* TableSample Bernoulli Vitter's Algo samples */
+	bool		is_sample_scan;
+	int			sample_percent;
+	TableSampleMethod sample_method;
 	HeapTuple	*rs_samplerows;
 	int			rs_samplesize;
 	int			rs_curindex;

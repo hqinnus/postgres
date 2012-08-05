@@ -2383,9 +2383,6 @@ _outRangeTblEntry(StringInfo str, const RangeTblEntry *node)
 	WRITE_BITMAPSET_FIELD(modifiedCols);
 }
 
-/*
- * not complete yet, need repeat sead.
- */
 static void
 _outTableSampleInfo(StringInfo str, TableSampleInfo *node)
 {

@@ -55,19 +55,21 @@ SampleNext(SampleScanState *node)
 {
 	HeapTuple	tuple;
 	HeapScanDesc scandesc;
+	EState		 *estate;
+	ScanDirection	direction;
 	TupleTableSlot *slot;
-	SampleScan *plan_node = (SampleScan *) node->ss.ps.plan;
-	TableSampleMethod sample_method = plan_node->sample_info->sample_method;
-	int				  sample_percent = plan_node->sample_info->sample_percent;
 
 	/*
-	 * get information from the estate and scan state
+	 * get information from the estate and scan state.
+	 * Though ScanDirection is displayed here, it is not used in
+	 * heap_getnext when doing samplescan.
 	 */
 	scandesc = node->ss.ss_currentScanDesc;
+	estate = node->ss.ps.state;
+	direction = estate->es_direction;
 	slot = node->ss.ss_ScanTupleSlot;
 
-	tuple = heap_getnext_samplescan(scandesc, sample_percent,
-								sample_method);
+	tuple = heap_getnext(scandesc, direction); 
 
 	/*              
 	 * save the tuple and the buffer returned to us by the access methods in
@@ -218,6 +220,15 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	 */
 	InitScanRelation(scanstate, estate);
 
+	/*
+	 * InitScanRelation cannot see sampleinfo, initialize below
+	 */
+	HeapScanDesc scan = scanstate->ss.ss_currentScanDesc;
+
+	scan->is_sample_scan = true;
+	scan->sample_percent = sample_percent;
+	scan->sample_method = sample_method;
+
 	scanstate->ss.ps.ps_TupFromTlist = false;
 
 	/*
@@ -231,7 +242,6 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	 */
 	if(sample_method == SAMPLE_BERNOULLI)
 	{
-		HeapScanDesc scan = scanstate->ss.ss_currentScanDesc;
 		double numtuples = scan->rs_rd->rd_rel->reltuples;
 		double row_test = numtuples*sample_percent/100;
 		int targrows = (int)floor(row_test + 0.5);
