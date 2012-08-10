@@ -401,8 +401,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	List	   *exprList = NIL;
 	bool		isGeneralSelect;
 	List	   *sub_rtable;
-	List	   *sub_relnamespace;
-	List	   *sub_varnamespace;
+	List	   *sub_namespace;
 	List	   *icolumns;
 	List	   *attrnos;
 	RangeTblEntry *rte;
@@ -463,16 +462,13 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	{
 		sub_rtable = pstate->p_rtable;
 		pstate->p_rtable = NIL;
-		sub_relnamespace = pstate->p_relnamespace;
-		pstate->p_relnamespace = NIL;
-		sub_varnamespace = pstate->p_varnamespace;
-		pstate->p_varnamespace = NIL;
+		sub_namespace = pstate->p_namespace;
+		pstate->p_namespace = NIL;
 	}
 	else
 	{
 		sub_rtable = NIL;		/* not used, but keep compiler quiet */
-		sub_relnamespace = NIL;
-		sub_varnamespace = NIL;
+		sub_namespace = NIL;
 	}
 
 	/*
@@ -522,8 +518,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		 */
 		sub_pstate->p_rtable = sub_rtable;
 		sub_pstate->p_joinexprs = NIL;	/* sub_rtable has no joins */
-		sub_pstate->p_relnamespace = sub_relnamespace;
-		sub_pstate->p_varnamespace = sub_varnamespace;
+		sub_pstate->p_namespace = sub_namespace;
 
 		selectQuery = transformStmt(sub_pstate, stmt->selectStmt);
 
@@ -542,6 +537,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		rte = addRangeTableEntryForSubquery(pstate,
 											selectQuery,
 											makeAlias("*SELECT*", NIL),
+											false,
 											false);
 		rtr = makeNode(RangeTblRef);
 		/* assume new rte is at end */
@@ -661,18 +657,6 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 			collations = lappend_oid(collations, InvalidOid);
 
 		/*
-		 * There mustn't have been any table references in the expressions,
-		 * else strange things would happen, like Cartesian products of those
-		 * tables with the VALUES list ...
-		 */
-		if (pstate->p_joinlist != NIL)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("VALUES must not contain table references"),
-					 parser_errposition(pstate,
-							  locate_var_of_level((Node *) exprsLists, 0))));
-
-		/*
 		 * Another thing we can't currently support is NEW/OLD references in
 		 * rules --- seems we'd need something like SQL99's LATERAL construct
 		 * to ensure that the values would be available while evaluating the
@@ -771,8 +755,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	 */
 	if (stmt->returningList)
 	{
-		pstate->p_relnamespace = NIL;
-		pstate->p_varnamespace = NIL;
+		pstate->p_namespace = NIL;
 		addRTEtoQuery(pstate, pstate->p_target_rangetblentry,
 					  false, true, true);
 		qry->returningList = transformReturningList(pstate,
@@ -1076,7 +1059,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	List	  **colexprs = NULL;
 	int			sublist_length = -1;
 	RangeTblEntry *rte;
-	RangeTblRef *rtr;
+	int			rtindex;
 	ListCell   *lc;
 	ListCell   *lc2;
 	int			i;
@@ -1224,19 +1207,17 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	 */
 	rte = addRangeTableEntryForValues(pstate, exprsLists, collations,
 									  NULL, true);
-	rtr = makeNode(RangeTblRef);
+	addRTEtoQuery(pstate, rte, true, true, true);
+
 	/* assume new rte is at end */
-	rtr->rtindex = list_length(pstate->p_rtable);
-	Assert(rte == rt_fetch(rtr->rtindex, pstate->p_rtable));
-	pstate->p_joinlist = lappend(pstate->p_joinlist, rtr);
-	pstate->p_relnamespace = lappend(pstate->p_relnamespace, rte);
-	pstate->p_varnamespace = lappend(pstate->p_varnamespace, rte);
+	rtindex = list_length(pstate->p_rtable);
+	Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
 
 	/*
 	 * Generate a targetlist as though expanding "*"
 	 */
 	Assert(pstate->p_next_resno == 1);
-	qry->targetList = expandRelAttrs(pstate, rte, rtr->rtindex, 0, -1);
+	qry->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
 
 	/*
 	 * The grammar allows attaching ORDER BY, LIMIT, and FOR UPDATE to a
@@ -1257,19 +1238,6 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES")));
-
-	/*
-	 * There mustn't have been any table references in the expressions, else
-	 * strange things would happen, like Cartesian products of those tables
-	 * with the VALUES list.  We have to check this after parsing ORDER BY et
-	 * al since those could insert more junk.
-	 */
-	if (list_length(pstate->p_joinlist) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("VALUES must not contain table references"),
-				 parser_errposition(pstate,
-							  locate_var_of_level((Node *) exprsLists, 0))));
 
 	/*
 	 * Another thing we can't currently support is NEW/OLD references in rules
@@ -1340,8 +1308,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 			   *l;
 	List	   *targetvars,
 			   *targetnames,
-			   *sv_relnamespace,
-			   *sv_varnamespace;
+			   *sv_namespace;
 	int			sv_rtable_length;
 	RangeTblEntry *jrte;
 	int			tllen;
@@ -1468,7 +1435,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 
 	/*
 	 * As a first step towards supporting sort clauses that are expressions
-	 * using the output columns, generate a varnamespace entry that makes the
+	 * using the output columns, generate a namespace entry that makes the
 	 * output columns visible.	A Join RTE node is handy for this, since we
 	 * can easily control the Vars generated upon matches.
 	 *
@@ -1485,11 +1452,11 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 									 NULL,
 									 false);
 
-	sv_relnamespace = pstate->p_relnamespace;
-	pstate->p_relnamespace = NIL;		/* no qualified names allowed */
+	sv_namespace = pstate->p_namespace;
+	pstate->p_namespace = NIL;
 
-	sv_varnamespace = pstate->p_varnamespace;
-	pstate->p_varnamespace = list_make1(jrte);
+	/* add jrte to column namespace only */
+	addRTEtoQuery(pstate, jrte, false, false, true);
 
 	/*
 	 * For now, we don't support resjunk sort clauses on the output of a
@@ -1505,9 +1472,9 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 										  false /* no unknowns expected */ ,
 										  false /* allow SQL92 rules */ );
 
+	/* restore namespace, remove jrte from rtable */
+	pstate->p_namespace = sv_namespace;
 	pstate->p_rtable = list_truncate(pstate->p_rtable, sv_rtable_length);
-	pstate->p_relnamespace = sv_relnamespace;
-	pstate->p_varnamespace = sv_varnamespace;
 
 	if (tllen != list_length(qry->targetList))
 		ereport(ERROR,
@@ -1586,7 +1553,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 	/*
 	 * If an internal node of a set-op tree has ORDER BY, LIMIT, FOR UPDATE,
 	 * or WITH clauses attached, we need to treat it like a leaf node to
-	 * generate an independent sub-Query tree.  Otherwise, it can be
+	 * generate an independent sub-Query tree.	Otherwise, it can be
 	 * represented by a SetOperationStmt node underneath the parent Query.
 	 */
 	if (stmt->op == SETOP_NONE)
@@ -1628,7 +1595,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 		 * because the namespace will be empty, but it could happen if we are
 		 * inside a rule.
 		 */
-		if (pstate->p_relnamespace || pstate->p_varnamespace)
+		if (pstate->p_namespace)
 		{
 			if (contain_vars_of_level((Node *) selectQuery, 1))
 				ereport(ERROR,
@@ -1661,6 +1628,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 		rte = addRangeTableEntryForSubquery(pstate,
 											selectQuery,
 											makeAlias(selectName, NIL),
+											false,
 											false);
 
 		/*
@@ -2083,7 +2051,6 @@ transformReturningList(ParseState *pstate, List *returningList)
 	int			save_next_resno;
 	bool		save_hasAggs;
 	bool		save_hasWindowFuncs;
-	int			length_rtable;
 
 	if (returningList == NIL)
 		return NIL;				/* nothing to do */
@@ -2101,7 +2068,6 @@ transformReturningList(ParseState *pstate, List *returningList)
 	pstate->p_hasAggs = false;
 	save_hasWindowFuncs = pstate->p_hasWindowFuncs;
 	pstate->p_hasWindowFuncs = false;
-	length_rtable = list_length(pstate->p_rtable);
 
 	/* transform RETURNING identically to a SELECT targetlist */
 	rlist = transformTargetList(pstate, returningList);
@@ -2121,25 +2087,6 @@ transformReturningList(ParseState *pstate, List *returningList)
 				 errmsg("cannot use window function in RETURNING"),
 				 parser_errposition(pstate,
 									locate_windowfunc((Node *) rlist))));
-
-	/* no new relation references please */
-	if (list_length(pstate->p_rtable) != length_rtable)
-	{
-		int			vlocation = -1;
-		int			relid;
-
-		/* try to locate such a reference to point to */
-		for (relid = length_rtable + 1; relid <= list_length(pstate->p_rtable); relid++)
-		{
-			vlocation = locate_var_of_relation((Node *) rlist, relid, 0);
-			if (vlocation >= 0)
-				break;
-		}
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("RETURNING cannot contain references to other relations"),
-				 parser_errposition(pstate, vlocation)));
-	}
 
 	/* mark column origins */
 	markTargetListOrigins(pstate, rlist);
