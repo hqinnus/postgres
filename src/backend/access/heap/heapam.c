@@ -69,7 +69,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"
-#include "utils/vitterapi.h"
+#include "utils/sampleutils.h"
 
 
 /* GUC variable */
@@ -88,7 +88,6 @@ static XLogRecPtr log_heap_update(Relation reln, Buffer oldbuf,
 				bool all_visible_cleared, bool new_all_visible_cleared);
 static bool HeapSatisfiesHOTUpdate(Relation relation, Bitmapset *hot_attrs,
 					   HeapTuple oldtup, HeapTuple newtup);
-static int get_rand_in_range(int a, int b);
 static void acquire_next_sampletup(HeapScanDesc scan);
 static void acquire_block_sample(HeapScanDesc scan);
 
@@ -591,8 +590,8 @@ heapgettup(HeapScanDesc scan,
  *
  *		Same API as heapgettup, but used in page-at-a-time mode
  *
- * SampleScan System algo is also implemented. Direction of Backward is considered,
- * but when will it happen?
+ * SampleScan System algo is also implemented. Direction of Backward is especially used
+ * under CURSOR query.
  *
  * The internal logic is much the same as heapgettup's too, but there are some
  * differences: we do not take the buffer content lock (that only needs to
@@ -890,20 +889,6 @@ heapgettup_pagemode(HeapScanDesc scan,
 		else
 			lineindex = 0;
 	}
-}
-
-/*
- * Returns a randomly-generated trigger x, such that a <= x < b
- */
-static int
-get_rand_in_range(int a, int b)
-{
-	/*
-	 * XXX: Using modulus takes the low-order bits of the random
-	 * number; since the high-order bits may contain more entropy
-	 * with more PRNGs, we should probably use those instead.
-	 */
-	return (random() % b) + a;
 }
 
 #if defined(DISABLE_COMPLEX_MACRO)
@@ -1399,10 +1384,16 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
 
 	HEAPDEBUG_1;				/* heap_getnext( info ) */
 
+	/* if sample percent is 0, just return NULL */
+	if (scan->is_sample_scan && scan->sample_percent == 0)
+		return NULL;
+
 	/* SampleScan or SeqScan */
 	if (scan->is_sample_scan)
 	{
+		/* Which sample method */
 		if(sample_method == SAMPLE_SYSTEM)
+			/* This function will check scan type inside */
 			heapgettup_pagemode(scan, direction,
 								scan->rs_nkeys, scan->rs_key);
 		else if(sample_method == SAMPLE_BERNOULLI)

@@ -1,20 +1,22 @@
 /*-------------------------------------------------------------------------
  *
- * vitterapi.c
- *	  Routines to Vitter's Reservoir Sampling Algo, tablesample Bernoulli sampling and analyze is using these apis.
+ * sampleutils.c
+ *	  Routines designed for TableSample Clause, containing Vitter's Reservoir
+ *	  Sampling Algo routines. Tablesample System, Bernoulli sampling and analyze
+ *	  is using these apis.
  *
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  src/backend/utils/misc/vitterapi.c
+ *	  src/backend/utils/misc/sampleutils.c
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "utils/vitterapi.h"
+#include "utils/sampleutils.h"
 
 
 
@@ -216,4 +218,18 @@ double
 anl_random_fract(void)
 {
 	return ((double) random() + 1) / ((double) MAX_RANDOM_VALUE + 2);
+}
+
+/*
+ * Returns a randomly-generated trigger x, such that a <= x < b
+ */
+int
+get_rand_in_range(int a, int b)
+{
+	/*
+	 * XXX: Using modulus takes the low-order bits of the random
+	 * number; since the high-order bits may contain more entropy
+	 * with more PRNGs, we should probably use those instead.
+	 */
+	return (random() % b) + a;
 }

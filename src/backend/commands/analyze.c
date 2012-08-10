@@ -52,7 +52,7 @@
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 #include "utils/tqual.h"
-#include "utils/vitterapi.h"
+#include "utils/sampleutils.h"
 
 
 /* Per-index data for ANALYZE */

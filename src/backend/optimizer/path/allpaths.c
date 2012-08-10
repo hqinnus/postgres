@@ -380,9 +380,13 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 * This could be improved: in some cicumstances it might make sense to do
 	 * an IndexScan and then sample from the index scan's result set, for instance.
 	 */
-	if(rel->has_table_sample)
+	if(rel->has_table_sample){
+		/* We decide we are inside a cursor stmt. If yes, abort */
+		if(root->glob->isCursorStmt)
+			elog(ERROR,
+					"Unsupported Cursor: No Tablesample should be queried under cursor!");
 		add_path(rel, create_samplescan_path(root, rel));
-	else
+	}else
 	{
 		/* Consider sequential scan */
 		add_path(rel, create_seqscan_path(root, rel, NULL));

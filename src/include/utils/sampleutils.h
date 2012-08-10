@@ -1,18 +1,19 @@
 /*-------------------------------------------------------------------------
  *
- * vitterapi.h
- *	  APIs for Vitter's reservoir Sampling Algo.
+ * sampleutils.h
+ *	  APIs for Tablesample Support, containing Vitter's Algo APIs, analyze.c
+ *	  is also using the APIs.
  *
  *
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * src/include/utils/vitterapi.h
+ * src/include/utils/sampleutils.h
  *
  *-------------------------------------------------------------------------
  */
-#ifndef VITTERAPI_H
-#define VITTERAPI_H
+#ifndef SAMPLEUTILS_H
+#define SAMPLEUTILS_H
 
 #include "storage/block.h"
 
@@ -35,5 +36,6 @@ extern BlockNumber BlockSampler_Next(BlockSampler bs);
 extern double anl_random_fract(void);
 extern double anl_init_selection_state(int n);
 extern double anl_get_next_S(double t, int n, double *stateptr);
+extern int get_rand_in_range(int a, int b);
 
-#endif /* VITTERAPI_H */
+#endif /* SAMPLEUTILS_H */
