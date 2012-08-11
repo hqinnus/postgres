@@ -22,18 +22,6 @@ win32ver.rc
 *.exe
 lib*dll.def
 
-#vim tmp file
-*.swp
-
-#bison file
-*.output
-
-#cscope file
-cscope.out
-src/tags
-/tags
-
-
 # Local excludes in root directory
 /GNUmakefile
 /config.log
@@ -42,8 +30,3 @@ src/tags
 /pgsql.sln.cache
 /Debug/
 /Release/
-/bin
-/include
-/lib
-/share
-
