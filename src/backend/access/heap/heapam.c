@@ -90,6 +90,7 @@ static bool HeapSatisfiesHOTUpdate(Relation relation, Bitmapset *hot_attrs,
 					   HeapTuple oldtup, HeapTuple newtup);
 static void acquire_next_sampletup(HeapScanDesc scan);
 static void acquire_block_sample(HeapScanDesc scan);
+static void	heapnullreturn(HeapScanDesc scan);
 
 /* ----------------------------------------------------------------
  *						 heap support routines
@@ -620,6 +621,9 @@ heapgettup_pagemode(HeapScanDesc scan,
 	int			rand_percent;
 	int			sample_percent = scan->sample_percent;
 
+	/* Testing and deciding. Should remove */
+	Assert(scan->rs_startblock == 0);
+
 	/*
 	 * calculate next starting lineindex, given scan direction
 	 */
@@ -641,12 +645,19 @@ heapgettup_pagemode(HeapScanDesc scan,
 			/* SampleScan, implement SYSTEM page selection */
 			if(scan->is_sample_scan)
 			{
-				while(page <= scan->rs_nblocks)
+				while(page < scan->rs_nblocks)
 				{
 					rand_percent = get_rand_in_range(0, 100);
 					if(rand_percent >= sample_percent)
 						page++;
 					else break;
+				}
+				finished = (page >= scan->rs_nblocks);
+				/* All pages just skiped, clear up and return */
+				if(finished)
+				{
+					heapnullreturn(scan);
+					return;
 				}
 			}
 
@@ -697,12 +708,19 @@ heapgettup_pagemode(HeapScanDesc scan,
 			/* SampleScan, implement SYSTEM page selection */
 			if(scan->is_sample_scan)
 			{
-				while(page >= 0)
+				while(page > 0)
 				{
 					rand_percent = get_rand_in_range(0, 100);
 					if(rand_percent >= sample_percent)
 						page--;
 					else break;
+				}
+				finished = (page == scan->rs_startblock);
+				/* All pages just skiped, clear up and return */
+				if(finished)
+				{
+					heapnullreturn(scan);
+					return;
 				}
 			}
 
@@ -816,15 +834,10 @@ heapgettup_pagemode(HeapScanDesc scan,
 		 */
 		if (backward)
 		{
-			finished = (page == scan->rs_startblock);
-			if (page == 0)
-				page = scan->rs_nblocks;
-			page--;
-			
 			/* SampleScan, implement SYSTEM page selection */
 			if(scan->is_sample_scan)
 			{
-				while(page >= 0)
+				while(page > scan->rs_startblock)
 				{
 					rand_percent = get_rand_in_range(0, 100);
 					if(rand_percent >= sample_percent)
@@ -832,21 +845,36 @@ heapgettup_pagemode(HeapScanDesc scan,
 					else break;
 				}
 			}
+
+			finished = (page == scan->rs_startblock);
+			/*
+			 * It was deciding page == 0, now change to 
+			 * page == scan->rs_startblock, otherwise doesn't make sense.
+			 * Is this reasoning correct?
+			 */
+			if (page == scan->rs_startblock)
+				page = scan->rs_nblocks;
+			page--;
 		}
 		else
 		{
 			page++;
 
 			/* SampleScan, implement SYSTEM page selection */
-			while(page <= scan->rs_nblocks)
+			while(page < scan->rs_nblocks)
 			{
 				rand_percent = get_rand_in_range(0, 100);
 				if(rand_percent >= sample_percent)
 					page++;
 				else break;
 			}
+			/*
+			 * It was setting page = 0, now change to 
+			 * page = scan->rs_startblock, otherwise doesn't make sense.
+			 * Is this reasoning correct?
+			 */
 			if (page >= scan->rs_nblocks)
-				page = 0;
+				page = scan->rs_startblock;
 			finished = (page == scan->rs_startblock);
 
 			/*
@@ -870,12 +898,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 		 */
 		if (finished)
 		{
-			if (BufferIsValid(scan->rs_cbuf))
-				ReleaseBuffer(scan->rs_cbuf);
-			scan->rs_cbuf = InvalidBuffer;
-			scan->rs_cblock = InvalidBlockNumber;
-			tuple->t_data = NULL;
-			scan->rs_inited = false;
+			heapnullreturn(scan);
 			return;
 		}
 
@@ -889,6 +912,20 @@ heapgettup_pagemode(HeapScanDesc scan,
 		else
 			lineindex = 0;
 	}
+}
+
+static void
+heapnullreturn(HeapScanDesc scan)
+{
+	HeapTuple	tuple = &(scan->rs_ctup);
+
+	if (BufferIsValid(scan->rs_cbuf))
+		ReleaseBuffer(scan->rs_cbuf);
+	scan->rs_cbuf = InvalidBuffer;
+	scan->rs_cblock = InvalidBlockNumber;
+	tuple->t_data = NULL;
+	scan->rs_inited = false;
+	return;
 }
 
 #if defined(DISABLE_COMPLEX_MACRO)
@@ -5895,7 +5932,8 @@ acquire_next_sampletup(HeapScanDesc scan)
 
 	if(scan->rs_curindex < scan->rs_samplesize)
 	{
-		pass_tuple = heap_copytuple(scan->rs_samplerows[scan->rs_curindex]);
+		/* Get the head tuple from sampled tuple array */
+		pass_tuple = scan->rs_samplerows[scan->rs_curindex];
 		tuple->t_len = pass_tuple->t_len;
 		tuple->t_self = pass_tuple->t_self;
 		tuple->t_tableOid = pass_tuple->t_tableOid;
@@ -5904,6 +5942,7 @@ acquire_next_sampletup(HeapScanDesc scan)
 	}
 	else
 	{
+		/* No more tuple to return */
 		scan->rs_cbuf = InvalidBuffer;
 		scan->rs_cblock = InvalidBlockNumber;
 		tuple->t_data = NULL;
@@ -5922,117 +5961,14 @@ acquire_next_sampletup(HeapScanDesc scan)
 static void
 acquire_block_sample(HeapScanDesc scan)
 {
-	int			numrows = 0;	/* # rows now in reservoir */
-	double		samplerows = 0; /* total # rows collected */
-	double		rowstoskip = -1;	/* -1 means not set yet */
-	BlockNumber	totalblocks = scan->rs_nblocks;
-	double		rstate;
-	int			targrows = scan->targrows;
-	HeapTuple	*rows = scan->rs_samplerows;
+	//HeapTuple	*rows = scan->rs_samplerows;
 	Relation onerel = scan->rs_rd;
-	BlockSamplerData bs;
+	double totalrows, totaldeadrows;
 
-	Assert(targrows > 0);
-
-	/* Prepare for sampling block numbers */ 
-	BlockSampler_Init(&bs, totalblocks, targrows);
-	/* Prepare for sampling rows */
-	rstate = anl_init_selection_state(targrows);
-
-	/* Outer loop over blocks to sample */
-	while (BlockSampler_HasMore(&bs))
-	{
-		BlockNumber targblock = BlockSampler_Next(&bs);
-		Buffer		targbuffer;
-		Page		targpage;
-		OffsetNumber targoffset,
-					maxoffset;
-
-		/*
-		 * We must maintain a pin on the target page's buffer to ensure that
-		 * the maxoffset value stays good (else concurrent VACUUM might delete
-		 * tuples out from under us).  Hence, pin the page until we are done
-		 * looking at it.  We also choose to hold sharelock on the buffer
-		 * throughout --- we could release and re-acquire sharelock for each
-		 * tuple, but since we aren't doing much work per tuple, the extra
-		 * lock traffic is probably better avoided.
-		 */
-		targbuffer = ReadBufferExtended(onerel, MAIN_FORKNUM, targblock,
-										RBM_NORMAL, scan->rs_strategy);
-		LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
-		targpage = BufferGetPage(targbuffer);
-
-		maxoffset = PageGetMaxOffsetNumber(targpage);
-
-		for (targoffset = FirstOffsetNumber; targoffset <= maxoffset; targoffset++)
-		{
-			ItemId itemid; 
-			HeapTupleData targtuple;
-
-			itemid = PageGetItemId(targpage, targoffset);
-
-			if (!ItemIdIsNormal(itemid))
-			{
-				continue;
-			}
-
-			ItemPointerSet(&targtuple.t_self, targblock, targoffset);
-
-			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
-			targtuple.t_len = ItemIdGetLength(itemid);
-
-			/*
-			 * The first targrows sample rows are simply copied into the
-			 * reservoir. Then we start replacing tuples in the sample
-			 * until we reach the end of the relation.	This algorithm is
-			 * from Jeff Vitter's paper (see full citation below). It
-			 * works by repeatedly computing the number of tuples to skip
-			 * before selecting a tuple, which replaces a randomly chosen
-			 * element of the reservoir (current set of tuples).  At all
-			 * times the reservoir is a true random sample of the tuples
-			 * we've passed over so far, so when we fall off the end of
-			 * the relation we're done.
-			 */
-			if (numrows < targrows)
-				rows[numrows++] = heap_copytuple(&targtuple);
-			else
-			{
-				/*
-				 * t in Vitter's paper is the number of records already
-				 * processed.  If we need to compute a new S value, we
-				 * must use the not-yet-incremented value of samplerows as
-				 * t.
-				 */
-				if (rowstoskip < 0)
-					rowstoskip = anl_get_next_S(samplerows, targrows,
-												&rstate);
-
-				if (rowstoskip <= 0)
-				{
-					/*
-					 * Found a suitable tuple, so save it, replacing one
-					 * old tuple at random
-					 */
-					int			k = (int) (targrows * anl_random_fract());
-
-					Assert(k >= 0 && k < targrows);
-					heap_freetuple(rows[k]);
-					rows[k] = heap_copytuple(&targtuple);
-				}
-
-				rowstoskip -= 1;
-			}
-
-			samplerows += 1;
-		}
-
-		/* Now release the lock and pin on the page */
-		UnlockReleaseBuffer(targbuffer);
-	}
-
-	scan->rs_samplesize = numrows;
+	scan->rs_samplesize = acquire_vitter_rows(onerel, 0, scan->rs_samplerows, scan->targrows,
+					scan->rs_nblocks, scan->rs_strategy,
+					&totalrows, &totaldeadrows, false);
 	scan->rs_sampleinited = true;
-
 	return;
 }
 

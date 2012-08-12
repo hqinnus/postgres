@@ -267,8 +267,6 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	else
 		seed = (int) time(NULL);
 
-#define RAND_STATE_SIZE 128
-
 	scanstate->rand_state = (char *) palloc(sizeof(char) * RAND_STATE_SIZE);
 	initstate(seed, scanstate->rand_state, RAND_STATE_SIZE);
 

@@ -16,6 +16,8 @@
 
 #include "nodes/execnodes.h"
 
+#define RAND_STATE_SIZE 128
+
 extern SampleScanState *ExecInitSampleScan(SampleScan *node, EState *estate, int eflags);
 extern TupleTableSlot *ExecSampleScan(SampleScanState *node);
 extern void ExecEndSampleScan(SampleScanState *node);

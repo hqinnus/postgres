@@ -460,12 +460,15 @@ ExecSupportsBackwardScan(Plan *node)
 			}
 
 		case T_SeqScan:
-		case T_SampleScan:
 		case T_TidScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
 		case T_CteScan:
 			return TargetListSupportsBackwardScan(node->targetlist);
+
+		/* For now, TableSample should not do backward */
+		case T_SampleScan:
+			return false;
 
 		case T_IndexScan:
 			return IndexSupportsBackwardScan(((IndexScan *) node)->indexid) &&

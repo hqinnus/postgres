@@ -16,6 +16,9 @@
 #define SAMPLEUTILS_H
 
 #include "storage/block.h"
+#include "utils/relcache.h"
+#include "access/htup.h"
+#include "storage/buf.h"
 
 /* Data structure for Algorithm S from Knuth 3.4.2 */
 typedef struct
@@ -36,6 +39,9 @@ extern BlockNumber BlockSampler_Next(BlockSampler bs);
 extern double anl_random_fract(void);
 extern double anl_init_selection_state(int n);
 extern double anl_get_next_S(double t, int n, double *stateptr);
+extern int acquire_vitter_rows(Relation onerel, int elevel, HeapTuple *rows, int targrows,
+							BlockNumber totalblocks, BufferAccessStrategy vac_strategy,
+							double *totalrows, double *totaldeadrows, bool isanalyze);
 extern int get_rand_in_range(int a, int b);
 
 #endif /* SAMPLEUTILS_H */
