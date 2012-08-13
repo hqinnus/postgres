@@ -117,25 +117,9 @@ SampleRecheck(SampleScanState *node, TupleTableSlot *slot)
 TupleTableSlot *
 ExecSampleScan(SampleScanState *node)
 {
-//	char *prev_state;
-//	
-//	PG_TRY();
-//	{
-		/* Install our PRNG state */
-//		prev_state = setstate(node->rand_state);
-
-		return ExecScan((ScanState *) node,
-					(ExecScanAccessMtd) SampleNext,
-					(ExecScanRecheckMtd) SampleRecheck);
-//	}
-//	PG_CATCH();
-//	{
-//		setstate(prev_state);
-//		PG_RE_THROW();
-//	}
-//	PG_END_TRY();
-
-//	setstate(prev_state);
+	return ExecScan((ScanState *) node,
+				(ExecScanAccessMtd) SampleNext,
+				(ExecScanRecheckMtd) SampleRecheck);
 }
 
 /* ----------------------------------------------------------------
@@ -344,8 +328,6 @@ ExecSampleRestrPos(SampleScanState *node)
 void
 ExecEndSampleScan(SampleScanState *node)
 {
-//	setstate(node->prev_rand_state);
-
 	ExecFreeExprContext(&node->ss.ps);
 
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
