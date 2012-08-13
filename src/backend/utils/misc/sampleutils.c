@@ -54,7 +54,7 @@ BlockSampler_HasMore(BlockSampler bs)
 }
 
 BlockNumber
-BlockSampler_Next(BlockSampler bs)
+BlockSampler_Next(void *state, BlockSampler bs)
 {
 	BlockNumber K = bs->N - bs->t;		/* remaining blocks */
 	int			k = bs->n - bs->m;		/* blocks still to sample */
@@ -91,7 +91,7 @@ BlockSampler_Next(BlockSampler bs)
 	 * less than k, which means that we cannot fail to select enough blocks.
 	 *----------
 	 */
-	V = anl_random_fract();
+	V = anl_random_fract(state);
 	p = 1.0 - (double) k / (double) K;
 	while (V < p)
 	{
@@ -125,14 +125,14 @@ BlockSampler_Next(BlockSampler bs)
  * processed.
  */
 double
-anl_init_selection_state(int n)
+anl_init_selection_state(void *state, int n)
 {
 	/* Initial value of W (for use when Algorithm Z is first applied) */
-	return exp(-log(anl_random_fract()) / n);
+	return exp(-log(anl_random_fract(state)) / n);
 }
 
 double
-anl_get_next_S(double t, int n, double *stateptr)
+anl_get_next_S(void *state, double t, int n, double *stateptr)
 {
 	double		S;
 
@@ -143,7 +143,7 @@ anl_get_next_S(double t, int n, double *stateptr)
 		double		V,
 					quot;
 
-		V = anl_random_fract(); /* Generate V */
+		V = anl_random_fract(state); /* Generate V */
 		S = 0;
 		t += 1;
 		/* Note: "num" in Vitter's code is always equal to t - n */
@@ -174,8 +174,8 @@ anl_get_next_S(double t, int n, double *stateptr)
 						y,
 						tmp;
 
-			/* Generate U and X */
-			U = anl_random_fract();
+			
+			U = anl_random_fract(state); /* Generate U and X */
 			X = t * (W - 1.0);
 			S = floor(X);		/* S is tentatively set to floor(X) */
 			/* Test if U <= h(S)/cg(X) in the manner of (6.3) */
@@ -204,7 +204,7 @@ anl_get_next_S(double t, int n, double *stateptr)
 				y *= numer / denom;
 				denom -= 1;
 			}
-			W = exp(-log(anl_random_fract()) / n);		/* Generate W in advance */
+			W = exp(-log(anl_random_fract(state)) / n);		/* Generate W in advance */
 			if (exp(log(y) / n) <= (t + X) / t)
 				break;
 		}
@@ -213,23 +213,55 @@ anl_get_next_S(double t, int n, double *stateptr)
 	return S;
 }
 
-/* Select a random value R uniformly distributed in (0 - 1) */
+
+/* ---------------------------------------------------
+ * Random number generator
+ * ---------------------------------------------------
+ */
+
+/* Select a random value R uniformly distributed in (0 - 1), for tablsample use */
 double
-anl_random_fract(void)
+anl_random_fract(void *state)
 {
-	return ((double) random() + 1) / ((double) MAX_RANDOM_VALUE + 2);
+	/* XXX:The MAX_RANDOM_VALUE may need to re-consider
+	 * If the sample_random can work as good as random(), may merge,
+	 * but now, as sample_random surely needs improvement, we leave 
+	 * analzye.c and tablesample using different random generator.
+	 */
+	if(state == NULL)
+	{
+		return ((double) random() + 1) / ((double) MAX_RANDOM_VALUE + 2);
+	}else{
+		return sample_random(state);
+	}
 }
 
 /*
  * Returns a randomly-generated trigger x, such that a <= x < b
  */
 int
-get_rand_in_range(int a, int b)
+get_rand_in_range(void *rand_state, int a, int b)
 {
-	/*
-	 * XXX: Using modulus takes the low-order bits of the random
-	 * number; since the high-order bits may contain more entropy
-	 * with more PRNGs, we should probably use those instead.
-	 */
-	return (random() % b) + a;
+	double rand = sample_random(rand_state);
+	return (rand * b) + a;
+}
+
+/*
+ * Random Number Seeding
+ */
+void sample_set_seed(void *random_state, double seed)
+{
+	/*     
+	 * XXX. This seeding algorithm could certainly be improved.
+	 * May need some effort on this.
+	 */    
+	memset(random_state, 0, sizeof(random_state));
+	memcpy(random_state,
+			&seed,
+			Min(sizeof(random_state), sizeof(seed)));
+}
+
+double sample_random(void *random_state)
+{
+	return pg_erand48(random_state);
 }

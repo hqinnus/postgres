@@ -619,6 +619,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 	ItemId		lpp;
 	int			rand_percent;
 	int			sample_percent = scan->sample_percent;
+	void		*rand_state = scan->rs_randstate; /* random generator state */
 
 	/*
 	 * calculate next starting lineindex, given scan direction
@@ -643,7 +644,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 			{
 				while(page <= scan->rs_nblocks)
 				{
-					rand_percent = get_rand_in_range(0, 100);
+					rand_percent = get_rand_in_range(rand_state, 0, 100);
 					if(rand_percent >= sample_percent)
 						page++;
 					else break;
@@ -699,7 +700,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 			{
 				while(page >= 0)
 				{
-					rand_percent = get_rand_in_range(0, 100);
+					rand_percent = get_rand_in_range(rand_state, 0, 100);
 					if(rand_percent >= sample_percent)
 						page--;
 					else break;
@@ -826,7 +827,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 			{
 				while(page >= 0)
 				{
-					rand_percent = get_rand_in_range(0, 100);
+					rand_percent = get_rand_in_range(rand_state, 0, 100);
 					if(rand_percent >= sample_percent)
 						page--;
 					else break;
@@ -840,7 +841,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 			/* SampleScan, implement SYSTEM page selection */
 			while(page <= scan->rs_nblocks)
 			{
-				rand_percent = get_rand_in_range(0, 100);
+				rand_percent = get_rand_in_range(rand_state, 0, 100);
 				if(rand_percent >= sample_percent)
 					page++;
 				else break;
@@ -5931,18 +5932,19 @@ acquire_block_sample(HeapScanDesc scan)
 	HeapTuple	*rows = scan->rs_samplerows;
 	Relation onerel = scan->rs_rd;
 	BlockSamplerData bs;
+	void		*rand_state = scan->rs_randstate;
 
 	Assert(targrows > 0);
 
 	/* Prepare for sampling block numbers */ 
 	BlockSampler_Init(&bs, totalblocks, targrows);
 	/* Prepare for sampling rows */
-	rstate = anl_init_selection_state(targrows);
+	rstate = anl_init_selection_state(rand_state, targrows);
 
 	/* Outer loop over blocks to sample */
 	while (BlockSampler_HasMore(&bs))
 	{
-		BlockNumber targblock = BlockSampler_Next(&bs);
+		BlockNumber targblock = BlockSampler_Next(rand_state, &bs);
 		Buffer		targbuffer;
 		Page		targpage;
 		OffsetNumber targoffset,
@@ -6004,7 +6006,7 @@ acquire_block_sample(HeapScanDesc scan)
 				 * t.
 				 */
 				if (rowstoskip < 0)
-					rowstoskip = anl_get_next_S(samplerows, targrows,
+					rowstoskip = anl_get_next_S(rand_state, samplerows, targrows,
 												&rstate);
 
 				if (rowstoskip <= 0)
@@ -6013,7 +6015,7 @@ acquire_block_sample(HeapScanDesc scan)
 					 * Found a suitable tuple, so save it, replacing one
 					 * old tuple at random
 					 */
-					int			k = (int) (targrows * anl_random_fract());
+					int			k = (int) (targrows * anl_random_fract(rand_state));
 
 					Assert(k >= 0 && k < targrows);
 					heap_freetuple(rows[k]);

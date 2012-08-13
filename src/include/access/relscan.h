@@ -52,6 +52,9 @@ typedef struct HeapScanDescData
 	int			rs_ntuples;		/* number of visible tuples on page */
 	OffsetNumber rs_vistuples[MaxHeapTuplesPerPage];	/* their offsets */
 
+	/* The random number generator state */
+	unsigned short rs_randstate[3];
+
 	/* TableSample Bernoulli Vitter's Algo samples */
 	bool		is_sample_scan;
 	int			sample_percent;

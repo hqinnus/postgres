@@ -39,6 +39,8 @@
 static void InitScanRelation(SampleScanState *node, EState *estate);
 static TupleTableSlot *SampleNext(SampleScanState *node);
 
+
+
 /* ----------------------------------------------------------------
  *						Scan Support
  * ----------------------------------------------------------------
@@ -115,25 +117,25 @@ SampleRecheck(SampleScanState *node, TupleTableSlot *slot)
 TupleTableSlot *
 ExecSampleScan(SampleScanState *node)
 {
-	char *prev_state;
-	
-	PG_TRY();
-	{
+//	char *prev_state;
+//	
+//	PG_TRY();
+//	{
 		/* Install our PRNG state */
-		prev_state = setstate(node->rand_state);
+//		prev_state = setstate(node->rand_state);
 
 		return ExecScan((ScanState *) node,
 					(ExecScanAccessMtd) SampleNext,
 					(ExecScanRecheckMtd) SampleRecheck);
-	}
-	PG_CATCH();
-	{
-		setstate(prev_state);
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+//	}
+//	PG_CATCH();
+//	{
+//		setstate(prev_state);
+//		PG_RE_THROW();
+//	}
+//	PG_END_TRY();
 
-	setstate(prev_state);
+//	setstate(prev_state);
 }
 
 /* ----------------------------------------------------------------
@@ -177,7 +179,7 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	SampleScanState *scanstate;
 	TableSampleMethod sample_method = node->sample_info->sample_method;
 	int				  sample_percent = node->sample_info->sample_percent;
-	int				  seed;
+	double				  seed;
 
 	/*
 	 * We don't expect to have any child plan node
@@ -265,12 +267,9 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	if(node->sample_info->is_repeatable)
 		seed = node->sample_info->repeat_seed;
 	else
-		seed = (int) time(NULL);
+		seed = time(NULL);
 
-#define RAND_STATE_SIZE 128
-
-	scanstate->rand_state = (char *) palloc(sizeof(char) * RAND_STATE_SIZE);
-	initstate(seed, scanstate->rand_state, RAND_STATE_SIZE);
+	sample_set_seed(scan->rs_randstate, seed);
 
 	return scanstate;
 }
@@ -345,7 +344,7 @@ ExecSampleRestrPos(SampleScanState *node)
 void
 ExecEndSampleScan(SampleScanState *node)
 {
-	setstate(node->prev_rand_state);
+//	setstate(node->prev_rand_state);
 
 	ExecFreeExprContext(&node->ss.ps);
 

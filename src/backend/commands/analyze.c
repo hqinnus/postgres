@@ -980,12 +980,12 @@ acquire_sample_rows(Relation onerel, int elevel,
 	/* Prepare for sampling block numbers */
 	BlockSampler_Init(&bs, totalblocks, targrows);
 	/* Prepare for sampling rows */
-	rstate = anl_init_selection_state(targrows);
+	rstate = anl_init_selection_state(NULL, targrows);
 
 	/* Outer loop over blocks to sample */
 	while (BlockSampler_HasMore(&bs))
 	{
-		BlockNumber targblock = BlockSampler_Next(&bs);
+		BlockNumber targblock = BlockSampler_Next(NULL, &bs);
 		Buffer		targbuffer;
 		Page		targpage;
 		OffsetNumber targoffset,
@@ -1127,7 +1127,7 @@ acquire_sample_rows(Relation onerel, int elevel,
 					 * t.
 					 */
 					if (rowstoskip < 0)
-						rowstoskip = anl_get_next_S(samplerows, targrows,
+						rowstoskip = anl_get_next_S(NULL, samplerows, targrows,
 													&rstate);
 
 					if (rowstoskip <= 0)
@@ -1136,7 +1136,7 @@ acquire_sample_rows(Relation onerel, int elevel,
 						 * Found a suitable tuple, so save it, replacing one
 						 * old tuple at random
 						 */
-						int			k = (int) (targrows * anl_random_fract());
+						int			k = (int) (targrows * anl_random_fract(NULL));
 
 						Assert(k >= 0 && k < targrows);
 						heap_freetuple(rows[k]);

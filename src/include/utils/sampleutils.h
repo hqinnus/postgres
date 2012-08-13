@@ -32,10 +32,12 @@ typedef BlockSamplerData *BlockSampler;
 extern void BlockSampler_Init(BlockSampler bs, BlockNumber nblocks,
 				  int samplesize);
 extern bool BlockSampler_HasMore(BlockSampler bs);
-extern BlockNumber BlockSampler_Next(BlockSampler bs);
-extern double anl_random_fract(void);
-extern double anl_init_selection_state(int n);
-extern double anl_get_next_S(double t, int n, double *stateptr);
-extern int get_rand_in_range(int a, int b);
+extern BlockNumber BlockSampler_Next(void *state, BlockSampler bs);
+extern double anl_init_selection_state(void *state, int n);
+extern double anl_get_next_S(void *state, double t, int n, double *stateptr);
+extern double anl_random_fract(void *state);
+extern int get_rand_in_range(void *state, int a, int b);
+extern void sample_set_seed(void *random_state, double seed);
+extern double sample_random(void *random_state);
 
 #endif /* SAMPLEUTILS_H */
