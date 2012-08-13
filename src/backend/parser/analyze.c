@@ -368,7 +368,8 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 	 */
 	transformFromClause(pstate, stmt->usingClause);
 
-	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
+	qual = transformWhereClause(pstate, stmt->whereClause,
+								EXPR_KIND_WHERE, "WHERE");
 
 	qry->returningList = transformReturningList(pstate, stmt->returningList);
 
@@ -378,8 +379,6 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
-	if (pstate->p_hasWindowFuncs)
-		parseCheckWindowFuncs(pstate, qry);
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs)
 		parseCheckAggregates(pstate, qry);
@@ -606,7 +605,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 			List	   *sublist = (List *) lfirst(lc);
 
 			/* Do basic expression transformation (same as a ROW() expr) */
-			sublist = transformExpressionList(pstate, sublist);
+			sublist = transformExpressionList(pstate, sublist, EXPR_KIND_VALUES);
 
 			/*
 			 * All the sublists must be the same length, *after*
@@ -689,16 +688,11 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	}
 	else
 	{
-		/*----------
-		 * Process INSERT ... VALUES with a single VALUES sublist.
-		 * We treat this separately for efficiency and for historical
-		 * compatibility --- specifically, allowing table references,
-		 * such as
-		 *			INSERT INTO foo VALUES(bar.*)
-		 *
-		 * The sublist is just computed directly as the Query's targetlist,
-		 * with no VALUES RTE.	So it works just like SELECT without FROM.
-		 *----------
+		/*
+		 * Process INSERT ... VALUES with a single VALUES sublist.  We treat
+		 * this case separately for efficiency.  The sublist is just computed
+		 * directly as the Query's targetlist, with no VALUES RTE.  So it
+		 * works just like a SELECT without any FROM.
 		 */
 		List	   *valuesLists = selectStmt->valuesLists;
 
@@ -707,7 +701,8 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 
 		/* Do basic expression transformation (same as a ROW() expr) */
 		exprList = transformExpressionList(pstate,
-										   (List *) linitial(valuesLists));
+										   (List *) linitial(valuesLists),
+										   EXPR_KIND_VALUES);
 
 		/* Prepare row for assignment to target table */
 		exprList = transformInsertRow(pstate, exprList,
@@ -767,19 +762,6 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
-	/* aggregates not allowed (but subselects are okay) */
-	if (pstate->p_hasAggs)
-		ereport(ERROR,
-				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("cannot use aggregate function in VALUES"),
-				 parser_errposition(pstate,
-									locate_agg_of_level((Node *) qry, 0))));
-	if (pstate->p_hasWindowFuncs)
-		ereport(ERROR,
-				(errcode(ERRCODE_WINDOWING_ERROR),
-				 errmsg("cannot use window function in VALUES"),
-				 parser_errposition(pstate,
-									locate_windowfunc((Node *) qry))));
 
 	assign_query_collations(pstate, qry);
 
@@ -854,6 +836,7 @@ transformInsertRow(ParseState *pstate, List *exprlist,
 		Assert(IsA(col, ResTarget));
 
 		expr = transformAssignedExpr(pstate, expr,
+									 EXPR_KIND_INSERT_TARGET,
 									 col->name,
 									 lfirst_int(attnos),
 									 col->indirection,
@@ -954,19 +937,19 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	transformFromClause(pstate, stmt->fromClause);
 
 	/* transform targetlist */
-	qry->targetList = transformTargetList(pstate, stmt->targetList);
+	qry->targetList = transformTargetList(pstate, stmt->targetList,
+										  EXPR_KIND_SELECT_TARGET);
 
 	/* mark column origins */
 	markTargetListOrigins(pstate, qry->targetList);
 
 	/* transform WHERE */
-	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
+	qual = transformWhereClause(pstate, stmt->whereClause,
+								EXPR_KIND_WHERE, "WHERE");
 
-	/*
-	 * Initial processing of HAVING clause is just like WHERE clause.
-	 */
+	/* initial processing of HAVING clause is much like WHERE clause */
 	qry->havingQual = transformWhereClause(pstate, stmt->havingClause,
-										   "HAVING");
+										   EXPR_KIND_HAVING, "HAVING");
 
 	/*
 	 * Transform sorting/grouping stuff.  Do ORDER BY first because both
@@ -977,6 +960,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->sortClause = transformSortClause(pstate,
 										  stmt->sortClause,
 										  &qry->targetList,
+										  EXPR_KIND_ORDER_BY,
 										  true /* fix unknowns */ ,
 										  false /* allow SQL92 rules */ );
 
@@ -984,6 +968,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 											stmt->groupClause,
 											&qry->targetList,
 											qry->sortClause,
+											EXPR_KIND_GROUP_BY,
 											false /* allow SQL92 rules */ );
 
 	if (stmt->distinctClause == NIL)
@@ -1012,9 +997,9 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 
 	/* transform LIMIT */
 	qry->limitOffset = transformLimitClause(pstate, stmt->limitOffset,
-											"OFFSET");
+											EXPR_KIND_OFFSET, "OFFSET");
 	qry->limitCount = transformLimitClause(pstate, stmt->limitCount,
-										   "LIMIT");
+										   EXPR_KIND_LIMIT, "LIMIT");
 
 	/* transform window clauses after we have seen all window functions */
 	qry->windowClause = transformWindowDefinitions(pstate,
@@ -1026,8 +1011,6 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
-	if (pstate->p_hasWindowFuncs)
-		parseCheckWindowFuncs(pstate, qry);
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs || qry->groupClause || qry->havingQual)
 		parseCheckAggregates(pstate, qry);
@@ -1099,7 +1082,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 		List	   *sublist = (List *) lfirst(lc);
 
 		/* Do basic expression transformation (same as a ROW() expr) */
-		sublist = transformExpressionList(pstate, sublist);
+		sublist = transformExpressionList(pstate, sublist, EXPR_KIND_VALUES);
 
 		/*
 		 * All the sublists must be the same length, *after* transformation
@@ -1226,13 +1209,14 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	qry->sortClause = transformSortClause(pstate,
 										  stmt->sortClause,
 										  &qry->targetList,
+										  EXPR_KIND_ORDER_BY,
 										  true /* fix unknowns */ ,
 										  false /* allow SQL92 rules */ );
 
 	qry->limitOffset = transformLimitClause(pstate, stmt->limitOffset,
-											"OFFSET");
+											EXPR_KIND_OFFSET, "OFFSET");
 	qry->limitCount = transformLimitClause(pstate, stmt->limitCount,
-										   "LIMIT");
+										   EXPR_KIND_LIMIT, "LIMIT");
 
 	if (stmt->lockingClause)
 		ereport(ERROR,
@@ -1258,19 +1242,6 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
-	/* aggregates not allowed (but subselects are okay) */
-	if (pstate->p_hasAggs)
-		ereport(ERROR,
-				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("cannot use aggregate function in VALUES"),
-				 parser_errposition(pstate,
-							  locate_agg_of_level((Node *) exprsLists, 0))));
-	if (pstate->p_hasWindowFuncs)
-		ereport(ERROR,
-				(errcode(ERRCODE_WINDOWING_ERROR),
-				 errmsg("cannot use window function in VALUES"),
-				 parser_errposition(pstate,
-									locate_windowfunc((Node *) exprsLists))));
 
 	assign_query_collations(pstate, qry);
 
@@ -1469,6 +1440,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->sortClause = transformSortClause(pstate,
 										  sortClause,
 										  &qry->targetList,
+										  EXPR_KIND_ORDER_BY,
 										  false /* no unknowns expected */ ,
 										  false /* allow SQL92 rules */ );
 
@@ -1486,17 +1458,15 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 						   exprLocation(list_nth(qry->targetList, tllen)))));
 
 	qry->limitOffset = transformLimitClause(pstate, limitOffset,
-											"OFFSET");
+											EXPR_KIND_OFFSET, "OFFSET");
 	qry->limitCount = transformLimitClause(pstate, limitCount,
-										   "LIMIT");
+										   EXPR_KIND_LIMIT, "LIMIT");
 
 	qry->rtable = pstate->p_rtable;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
-	if (pstate->p_hasWindowFuncs)
-		parseCheckWindowFuncs(pstate, qry);
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs || qry->groupClause || qry->havingQual)
 		parseCheckAggregates(pstate, qry);
@@ -1946,9 +1916,11 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	 */
 	transformFromClause(pstate, stmt->fromClause);
 
-	qry->targetList = transformTargetList(pstate, stmt->targetList);
+	qry->targetList = transformTargetList(pstate, stmt->targetList,
+										  EXPR_KIND_UPDATE_SOURCE);
 
-	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
+	qual = transformWhereClause(pstate, stmt->whereClause,
+								EXPR_KIND_WHERE, "WHERE");
 
 	qry->returningList = transformReturningList(pstate, stmt->returningList);
 
@@ -1956,24 +1928,6 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
-
-	/*
-	 * Top-level aggregates are simply disallowed in UPDATE, per spec. (From
-	 * an implementation point of view, this is forced because the implicit
-	 * ctid reference would otherwise be an ungrouped variable.)
-	 */
-	if (pstate->p_hasAggs)
-		ereport(ERROR,
-				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("cannot use aggregate function in UPDATE"),
-				 parser_errposition(pstate,
-									locate_agg_of_level((Node *) qry, 0))));
-	if (pstate->p_hasWindowFuncs)
-		ereport(ERROR,
-				(errcode(ERRCODE_WINDOWING_ERROR),
-				 errmsg("cannot use window function in UPDATE"),
-				 parser_errposition(pstate,
-									locate_windowfunc((Node *) qry))));
 
 	/*
 	 * Now we are done with SELECT-like processing, and can get on with
@@ -2049,8 +2003,6 @@ transformReturningList(ParseState *pstate, List *returningList)
 {
 	List	   *rlist;
 	int			save_next_resno;
-	bool		save_hasAggs;
-	bool		save_hasWindowFuncs;
 
 	if (returningList == NIL)
 		return NIL;				/* nothing to do */
@@ -2063,38 +2015,14 @@ transformReturningList(ParseState *pstate, List *returningList)
 	save_next_resno = pstate->p_next_resno;
 	pstate->p_next_resno = 1;
 
-	/* save other state so that we can detect disallowed stuff */
-	save_hasAggs = pstate->p_hasAggs;
-	pstate->p_hasAggs = false;
-	save_hasWindowFuncs = pstate->p_hasWindowFuncs;
-	pstate->p_hasWindowFuncs = false;
-
 	/* transform RETURNING identically to a SELECT targetlist */
-	rlist = transformTargetList(pstate, returningList);
-
-	/* check for disallowed stuff */
-
-	/* aggregates not allowed (but subselects are okay) */
-	if (pstate->p_hasAggs)
-		ereport(ERROR,
-				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("cannot use aggregate function in RETURNING"),
-				 parser_errposition(pstate,
-									locate_agg_of_level((Node *) rlist, 0))));
-	if (pstate->p_hasWindowFuncs)
-		ereport(ERROR,
-				(errcode(ERRCODE_WINDOWING_ERROR),
-				 errmsg("cannot use window function in RETURNING"),
-				 parser_errposition(pstate,
-									locate_windowfunc((Node *) rlist))));
+	rlist = transformTargetList(pstate, returningList, EXPR_KIND_RETURNING);
 
 	/* mark column origins */
 	markTargetListOrigins(pstate, rlist);
 
 	/* restore state */
 	pstate->p_next_resno = save_next_resno;
-	pstate->p_hasAggs = save_hasAggs;
-	pstate->p_hasWindowFuncs = save_hasWindowFuncs;
 
 	return rlist;
 }

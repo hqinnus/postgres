@@ -5487,7 +5487,8 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 							stmt->deferrable,
 							stmt->initdeferred,
 							stmt->primary,
-							true,
+							true, /* update pg_index */
+							true, /* remove old dependencies */
 							allowSystemTableMods);
 
 	index_close(indexRel, NoLock);
@@ -7178,27 +7179,14 @@ ATPrepAlterColumnType(List **wqueue,
 												true);
 			addRTEtoQuery(pstate, rte, false, true, true);
 
-			transform = transformExpr(pstate, transform);
+			transform = transformExpr(pstate, transform,
+									  EXPR_KIND_ALTER_COL_TRANSFORM);
 
 			/* It can't return a set */
 			if (expression_returns_set(transform))
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 					  errmsg("transform expression must not return a set")));
-
-			/* No subplans or aggregates, either... */
-			if (pstate->p_hasSubLinks)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot use subquery in transform expression")));
-			if (pstate->p_hasAggs)
-				ereport(ERROR,
-						(errcode(ERRCODE_GROUPING_ERROR),
-						 errmsg("cannot use aggregate function in transform expression")));
-			if (pstate->p_hasWindowFuncs)
-				ereport(ERROR,
-						(errcode(ERRCODE_WINDOWING_ERROR),
-						 errmsg("cannot use window function in transform expression")));
 		}
 		else
 		{

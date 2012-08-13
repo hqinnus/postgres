@@ -675,6 +675,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	int			parentRTindex = rti;
 	List	   *live_childrels = NIL;
 	List	   *subpaths = NIL;
+	bool		subpaths_valid = true;
 	List	   *all_child_pathkeys = NIL;
 	List	   *all_child_outers = NIL;
 	ListCell   *l;
@@ -713,19 +714,21 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		if (IS_DUMMY_REL(childrel))
 			continue;
 
-		/* XXX need to figure out what to do for LATERAL */
-		if (childrel->cheapest_total_path == NULL)
-			elog(ERROR, "LATERAL within an append relation is not supported yet");
+		/*
+		 * Child is live, so add it to the live_childrels list for use below.
+		 */
+		live_childrels = lappend(live_childrels, childrel);
 
 		/*
-		 * Child is live, so add its cheapest access path to the Append path
-		 * we are constructing for the parent.
+		 * If child has an unparameterized cheapest-total path, add that to
+		 * the unparameterized Append path we are constructing for the parent.
+		 * If not, there's no workable unparameterized path.
 		 */
-		subpaths = accumulate_append_subpath(subpaths,
+		if (childrel->cheapest_total_path)
+			subpaths = accumulate_append_subpath(subpaths,
 											 childrel->cheapest_total_path);
-
-		/* Remember which childrels are live, for logic below */
-		live_childrels = lappend(live_childrels, childrel);
+		else
+			subpaths_valid = false;
 
 		/*
 		 * Collect lists of all the available path orderings and
@@ -793,17 +796,20 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	/*
-	 * Next, build an unordered, unparameterized Append path for the rel.
-	 * (Note: this is correct even if we have zero or one live subpath due to
-	 * constraint exclusion.)
+	 * If we found unparameterized paths for all children, build an unordered,
+	 * unparameterized Append path for the rel.  (Note: this is correct even
+	 * if we have zero or one live subpath due to constraint exclusion.)
 	 */
-	add_path(rel, (Path *) create_append_path(rel, subpaths, NULL));
+	if (subpaths_valid)
+		add_path(rel, (Path *) create_append_path(rel, subpaths, NULL));
 
 	/*
-	 * Build unparameterized MergeAppend paths based on the collected list of
-	 * child pathkeys.
+	 * Also build unparameterized MergeAppend paths based on the collected
+	 * list of child pathkeys.
 	 */
-	generate_mergeappend_paths(root, rel, live_childrels, all_child_pathkeys);
+	if (subpaths_valid)
+		generate_mergeappend_paths(root, rel, live_childrels,
+								   all_child_pathkeys);
 
 	/*
 	 * Build Append paths for each parameterization seen among the child rels.
@@ -821,11 +827,11 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	foreach(l, all_child_outers)
 	{
 		Relids		required_outer = (Relids) lfirst(l);
-		bool		ok = true;
 		ListCell   *lcr;
 
 		/* Select the child paths for an Append with this parameterization */
 		subpaths = NIL;
+		subpaths_valid = true;
 		foreach(lcr, live_childrels)
 		{
 			RelOptInfo *childrel = (RelOptInfo *) lfirst(lcr);
@@ -845,7 +851,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 													 required_outer, 1.0);
 				if (cheapest_total == NULL)
 				{
-					ok = false;
+					subpaths_valid = false;
 					break;
 				}
 			}
@@ -853,7 +859,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			subpaths = accumulate_append_subpath(subpaths, cheapest_total);
 		}
 
-		if (ok)
+		if (subpaths_valid)
 			add_path(rel, (Path *)
 					 create_append_path(rel, subpaths, required_outer));
 	}
@@ -925,13 +931,11 @@ generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
 			 */
 			if (cheapest_startup == NULL || cheapest_total == NULL)
 			{
-				/* XXX need to figure out what to do for LATERAL */
-				if (childrel->cheapest_total_path == NULL)
-					elog(ERROR, "LATERAL within an append relation is not supported yet");
-
 				cheapest_startup = cheapest_total =
 					childrel->cheapest_total_path;
+				/* Assert we do have an unparameterized path for this child */
 				Assert(cheapest_total != NULL);
+				Assert(cheapest_total->param_info == NULL);
 			}
 
 			/*
@@ -1220,15 +1224,33 @@ set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
  * set_values_pathlist
  *		Build the (single) access path for a VALUES RTE
  *
- * There can be no need for a parameterized path here.	(Although the SQL
- * spec does allow LATERAL (VALUES (x)), the parser will transform that
- * into a subquery, so it doesn't end up here.)
+ * As with subqueries, a VALUES RTE's path might be parameterized due to
+ * LATERAL references, but that's inherent in the values expressions and
+ * not a result of pushing down join quals.
  */
 static void
 set_values_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
+	Relids		required_outer;
+
+	/*
+	 * If it's a LATERAL RTE, it might contain some Vars of the current query
+	 * level, requiring it to be treated as parameterized.  (NB: even though
+	 * the parser never marks VALUES RTEs as LATERAL, they could be so marked
+	 * by now, as a result of subquery pullup.)
+	 */
+	if (rte->lateral)
+	{
+		required_outer = pull_varnos_of_level((Node *) rte->values_lists, 0);
+		/* Enforce convention that empty required_outer is exactly NULL */
+		if (bms_is_empty(required_outer))
+			required_outer = NULL;
+	}
+	else
+		required_outer = NULL;
+
 	/* Generate appropriate path */
-	add_path(rel, create_valuesscan_path(root, rel));
+	add_path(rel, create_valuesscan_path(root, rel, required_outer));
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(rel);
