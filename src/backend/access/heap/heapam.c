@@ -622,9 +622,6 @@ heapgettup_pagemode(HeapScanDesc scan,
 	int			sample_percent = scan->sample_percent;
 	void		*rand_state = scan->rs_randstate; /* random generator state */
 
-	/* Testing and deciding. Should remove */
-	Assert(scan->rs_startblock == 0);
-
 	/*
 	 * calculate next starting lineindex, given scan direction
 	 */
@@ -5899,28 +5896,8 @@ heap_sync(Relation rel)
 }
 
 /*
- * acquire_next_sampletup -- algo modified from acquire_sample_rows from analyze.c
- *
- * As of May 2004 we use a new two-stage method:  Stage one selects up
- * to targrows random blocks (or all blocks, if there aren't so many).
- * Stage two scans these blocks and uses the Vitter algorithm to create
- * a random sample of targrows rows (or less, if there are less in the
- * sample of blocks).  The two stages are executed simultaneously: each
- * block is processed as soon as stage one returns its number and while
- * the rows are read stage two controls which ones are to be inserted
- * into the sample.
- *
- * Although every row has an equal chance of ending up in the final
- * sample, this sampling method is not perfect: not every possible
- * sample has an equal chance of being selected.  For large relations
- * the number of different blocks represented by the sample tends to be
- * too small.  We can live with that for now.  Improvements are welcome.
- *
- * An important property of this sampling method is that because we do
- * look at a statistically unbiased set of blocks, we should get
- * unbiased estimates of the average numbers of live and dead rows per
- * block.  The previous sampling method put too much credence in the row
- * density near the start of the table.
+ * acquire_next_sampletup -- algo modified from acquire_sample_rows from analyze.c.
+ * The core algo is inside acquire_block_sample, which is also used by analyze.c now.
  */
 static void
 acquire_next_sampletup(HeapScanDesc scan)
@@ -5953,7 +5930,6 @@ acquire_next_sampletup(HeapScanDesc scan)
 }
 
 /*
- * This function is very similar to acquire_sample_rows in analyze.c
  *
  * Selected rows are returned in the caller-allocated array scan->rs_samplerows, which
  * must have at least targrows entries.

@@ -1431,17 +1431,14 @@ typedef struct ValuesScanState
 } ValuesScanState;
 
 /* --------------
- * This State struct should be decided by the algorithm used in my Sampling
- * method. Should have further modification via ANALYZE algo.
+ * This State struct should be decided by the algorithm used in Sampling
+ * method.
  *
  * SampleScanState: the run-time state associated with a single sample
  * scan. This is the run-time dual of the SampleScan plan node: for
  * each SampleScan in the Plan tree, we create a SampleScanState in
  * the corresponding PlanState tree. A PlanState's associated Plan can
  * be found via ss.ps.plan.
- *
- * In addition to the fields of its parent class (ScanState), a
- * SampleScanState contains:
  *
  * --------------
  */
@@ -1450,8 +1447,6 @@ typedef struct SampleScanState
 {
 	/* parent class; first field is NodeTag */
 	ScanState			 ss;
-	//char			 *rand_state;
-	//char			 *prev_rand_state;
 } SampleScanState;
 
 

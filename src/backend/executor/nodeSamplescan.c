@@ -99,10 +99,6 @@ SampleNext(SampleScanState *node)
 static bool
 SampleRecheck(SampleScanState *node, TupleTableSlot *slot)
 {
-	/*
-	 * Note that unlike IndexScan, SampleScan never use keys in heap_beginscan
-	 * (and this is very bad) - so, here we do not check are keys ok or not.
-	 */
 	return true;
 }
 
@@ -263,6 +259,10 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
  * To understand this part more, read at 
  * 1. execAmi.c, ExecSupportsMarkRestore
  * 2. The below part is still seqscan code, not changed yet.
+ * 3. ReScan is needed by join methods, Others used by MergeJoin
+ * 4. For now, samplescan result will be materialized, which will skip
+ *    below methods, but doing so is quite slow. Need to refine the 
+ *    optimisation for tablesample and implement below routines.
  * ----------------------------------------------------------------
  */
 

@@ -1665,7 +1665,6 @@ distinct_col_search(int colno, List *colnos, List *opids)
  * create_subqueryscan_path
  *	  Creates a path corresponding to a sequential scan of a subquery,
  *	  returning the pathnode.
- *	  There is a possibility to modify this to Sequential Scan, but not sure.
  */
 Path *
 create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
@@ -1688,7 +1687,6 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
  * create_functionscan_path
  *	  Creates a path corresponding to a sequential scan of a function,
  *	  returning the pathnode.
- *	  POSSIBLE for Sequential Scan
  */
 Path *
 create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,

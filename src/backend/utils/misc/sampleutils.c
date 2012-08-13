@@ -218,31 +218,10 @@ anl_get_next_S(void *state, double t, int n, double *stateptr)
 	return S;
 }
 
-
-/* ---------------------------------------------------
- * Random number generator
- * ---------------------------------------------------
- */
-
-/* Select a random value R uniformly distributed in (0 - 1), for tablsample use */
-double
-anl_random_fract(void *state)
-{
-	/* XXX:The MAX_RANDOM_VALUE may need to re-consider
-	 * If the sample_random can work as good as random(), may merge,
-	 * but now, as sample_random surely needs improvement, we leave 
-	 * analzye.c and tablesample using different random generator.
-	 */
-	if(state == NULL)
-	{
-		return ((double) random() + 1) / ((double) MAX_RANDOM_VALUE + 2);
-	}else{
-		return sample_random(state);
-	}
-}
-
 /*
- * acquire_sample_rows -- acquire a random sample of rows from the table
+ * Acquire a random sample of rows from the table.
+ * This is the place where Vitter's Reservior Sampling Algo gets implemented.
+ * Used by tablesample scan and analyze.c. See the usage below.
  *
  *
  * Selected rows are returned in the caller-allocated array rows[], which
@@ -517,8 +496,8 @@ acquire_vitter_rows(Relation onerel, void *state, HeapTuple *rows, int targrows,
 }
 
 /*
- *  * qsort comparator for sorting rows[] array
- *   */
+ * qsort comparator for sorting rows[] array
+ */
 static int
 compare_rows(const void *a, const void *b)
 {
@@ -538,6 +517,29 @@ compare_rows(const void *a, const void *b)
 	if (oa > ob)
 		return 1;
 	return 0;
+}
+
+
+
+/* ---------------------------------------------------
+ * Random number generator
+ * ---------------------------------------------------
+ */
+
+/* Select a random value R uniformly distributed in (0 - 1), for tablsample use */
+double
+anl_random_fract(void *state)
+{
+	/* XXX: If the sample_random can work as good as random(), may merge,
+	 * but now, as sample_random surely needs improvement, we leave 
+	 * analzye.c and tablesample using different random generator.
+	 */
+	if(state == NULL)
+	{
+		return ((double) random() + 1) / ((double) MAX_RANDOM_VALUE + 2);
+	}else{
+		return sample_random(state);
+	}
 }
 
 /*

@@ -92,7 +92,6 @@ static void update_attstats(Oid relid, bool inh,
 				int natts, VacAttrStats **vacattrstats);
 static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 static Datum ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
-static int	compare_rows(const void *a, const void *b);
 
 /*
  *	analyze_rel() -- analyze one relation
@@ -964,30 +963,6 @@ acquire_sample_rows(Relation onerel, int elevel,
 	return acquire_vitter_rows(onerel, NULL, rows, targrows,
 							totalblocks, vac_strategy, totalrows, totaldeadrows,
 							true, elevel);
-}
-
-/*
- *  * qsort comparator for sorting rows[] array
- *   */
-static int
-compare_rows(const void *a, const void *b)
-{
-	HeapTuple	ha = *(const HeapTuple *) a;
-	HeapTuple	hb = *(const HeapTuple *) b;
-	BlockNumber ba = ItemPointerGetBlockNumber(&ha->t_self);
-	OffsetNumber oa = ItemPointerGetOffsetNumber(&ha->t_self);
-	BlockNumber bb = ItemPointerGetBlockNumber(&hb->t_self);
-	OffsetNumber ob = ItemPointerGetOffsetNumber(&hb->t_self);
-
-	if (ba < bb)
-		return -1;
-	if (ba > bb)
-		return 1;
-	if (oa < ob)
-		return -1;
-	if (oa > ob)
-		return 1;
-	return 0;
 }
 
 /*

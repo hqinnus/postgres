@@ -99,7 +99,7 @@ typedef struct PlannerGlobal
 
 	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
 
-	bool		isCursorStmt;	/* Is this a cursor stmt, only for Cursor Tablesample Check */
+	bool		isCursorStmt;	/* Is this a cursor stmt? Only for Cursor Tablesample Check */
 } PlannerGlobal;
 
 /* macro for fetching the Plan associated with a SubPlan node */
