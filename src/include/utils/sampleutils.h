@@ -42,8 +42,8 @@ extern double anl_random_fract(void *state);
 extern int get_rand_in_range(void *state, int a, int b);
 extern void sample_set_seed(void *random_state, double seed);
 extern double sample_random(void *random_state);
-extern int acquire_vitter_rows(Relation onerel, int elevel, HeapTuple *rows, int targrows,
+extern int acquire_vitter_rows(Relation onerel, void *state, HeapTuple *rows, int targrows,
 							BlockNumber totalblocks, BufferAccessStrategy vac_strategy,
-							double *totalrows, double *totaldeadrows, bool isanalyze);
+							double *totalrows, double *totaldeadrows, bool isanalyze, int elevel);
 
 #endif /* SAMPLEUTILS_H */

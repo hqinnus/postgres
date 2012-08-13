@@ -276,10 +276,10 @@ anl_random_fract(void *state)
  * density near the start of the table.
  */
 int
-acquire_vitter_rows(Relation onerel, int elevel, HeapTuple *rows, int targrows,
+acquire_vitter_rows(Relation onerel, void *state, HeapTuple *rows, int targrows,
 					BlockNumber totalblocks, BufferAccessStrategy vac_strategy,
 					double *totalrows, double *totaldeadrows,
-                    bool isanalyze)
+                    bool isanalyze, int elevel)
 {
 	int			numrows = 0;	/* # rows now in reservoir */
 	double		samplerows = 0; /* total # rows collected */
@@ -298,12 +298,12 @@ acquire_vitter_rows(Relation onerel, int elevel, HeapTuple *rows, int targrows,
 	/* Prepare for sampling block numbers */
 	BlockSampler_Init(&bs, totalblocks, targrows);
 	/* Prepare for sampling rows */
-	rstate = anl_init_selection_state(targrows);
+	rstate = anl_init_selection_state(state, targrows);
 
 	/* Outer loop over blocks to sample */
 	while (BlockSampler_HasMore(&bs))
 	{
-		BlockNumber targblock = BlockSampler_Next(&bs);
+		BlockNumber targblock = BlockSampler_Next(state, &bs);
 		Buffer		targbuffer;
 		Page		targpage;
 		OffsetNumber targoffset,
@@ -445,7 +445,7 @@ acquire_vitter_rows(Relation onerel, int elevel, HeapTuple *rows, int targrows,
 					 * t.
 					 */
 					if (rowstoskip < 0)
-						rowstoskip = anl_get_next_S(samplerows, targrows,
+						rowstoskip = anl_get_next_S(state, samplerows, targrows,
 													&rstate);
 
 					if (rowstoskip <= 0)
@@ -454,7 +454,7 @@ acquire_vitter_rows(Relation onerel, int elevel, HeapTuple *rows, int targrows,
 						 * Found a suitable tuple, so save it, replacing one
 						 * old tuple at random
 						 */
-						int			k = (int) (targrows * anl_random_fract());
+						int			k = (int) (targrows * anl_random_fract(state));
 
 						Assert(k >= 0 && k < targrows);
 						heap_freetuple(rows[k]);
