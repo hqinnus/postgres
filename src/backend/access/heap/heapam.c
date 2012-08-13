@@ -90,6 +90,7 @@ static bool HeapSatisfiesHOTUpdate(Relation relation, Bitmapset *hot_attrs,
 					   HeapTuple oldtup, HeapTuple newtup);
 static void acquire_next_sampletup(HeapScanDesc scan);
 static void acquire_block_sample(HeapScanDesc scan);
+static void	heapnullreturn(HeapScanDesc scan);
 
 /* ----------------------------------------------------------------
  *						 heap support routines
@@ -621,6 +622,9 @@ heapgettup_pagemode(HeapScanDesc scan,
 	int			sample_percent = scan->sample_percent;
 	void		*rand_state = scan->rs_randstate; /* random generator state */
 
+	/* Testing and deciding. Should remove */
+	Assert(scan->rs_startblock == 0);
+
 	/*
 	 * calculate next starting lineindex, given scan direction
 	 */
@@ -642,12 +646,19 @@ heapgettup_pagemode(HeapScanDesc scan,
 			/* SampleScan, implement SYSTEM page selection */
 			if(scan->is_sample_scan)
 			{
-				while(page <= scan->rs_nblocks)
+				while(page < scan->rs_nblocks)
 				{
 					rand_percent = get_rand_in_range(rand_state, 0, 100);
 					if(rand_percent >= sample_percent)
 						page++;
 					else break;
+				}
+				finished = (page >= scan->rs_nblocks);
+				/* All pages just skiped, clear up and return */
+				if(finished)
+				{
+					heapnullreturn(scan);
+					return;
 				}
 			}
 
@@ -698,12 +709,19 @@ heapgettup_pagemode(HeapScanDesc scan,
 			/* SampleScan, implement SYSTEM page selection */
 			if(scan->is_sample_scan)
 			{
-				while(page >= 0)
+				while(page > 0)
 				{
 					rand_percent = get_rand_in_range(rand_state, 0, 100);
 					if(rand_percent >= sample_percent)
 						page--;
 					else break;
+				}
+				finished = (page == scan->rs_startblock);
+				/* All pages just skiped, clear up and return */
+				if(finished)
+				{
+					heapnullreturn(scan);
+					return;
 				}
 			}
 
@@ -817,15 +835,10 @@ heapgettup_pagemode(HeapScanDesc scan,
 		 */
 		if (backward)
 		{
-			finished = (page == scan->rs_startblock);
-			if (page == 0)
-				page = scan->rs_nblocks;
-			page--;
-			
 			/* SampleScan, implement SYSTEM page selection */
 			if(scan->is_sample_scan)
 			{
-				while(page >= 0)
+				while(page > scan->rs_startblock)
 				{
 					rand_percent = get_rand_in_range(rand_state, 0, 100);
 					if(rand_percent >= sample_percent)
@@ -833,21 +846,36 @@ heapgettup_pagemode(HeapScanDesc scan,
 					else break;
 				}
 			}
+
+			finished = (page == scan->rs_startblock);
+			/*
+			 * It was deciding page == 0, now change to 
+			 * page == scan->rs_startblock, otherwise doesn't make sense.
+			 * Is this reasoning correct?
+			 */
+			if (page == scan->rs_startblock)
+				page = scan->rs_nblocks;
+			page--;
 		}
 		else
 		{
 			page++;
 
 			/* SampleScan, implement SYSTEM page selection */
-			while(page <= scan->rs_nblocks)
+			while(page < scan->rs_nblocks)
 			{
 				rand_percent = get_rand_in_range(rand_state, 0, 100);
 				if(rand_percent >= sample_percent)
 					page++;
 				else break;
 			}
+			/*
+			 * It was setting page = 0, now change to 
+			 * page = scan->rs_startblock, otherwise doesn't make sense.
+			 * Is this reasoning correct?
+			 */
 			if (page >= scan->rs_nblocks)
-				page = 0;
+				page = scan->rs_startblock;
 			finished = (page == scan->rs_startblock);
 
 			/*
@@ -871,12 +899,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 		 */
 		if (finished)
 		{
-			if (BufferIsValid(scan->rs_cbuf))
-				ReleaseBuffer(scan->rs_cbuf);
-			scan->rs_cbuf = InvalidBuffer;
-			scan->rs_cblock = InvalidBlockNumber;
-			tuple->t_data = NULL;
-			scan->rs_inited = false;
+			heapnullreturn(scan);
 			return;
 		}
 
@@ -890,6 +913,20 @@ heapgettup_pagemode(HeapScanDesc scan,
 		else
 			lineindex = 0;
 	}
+}
+
+static void
+heapnullreturn(HeapScanDesc scan)
+{
+	HeapTuple	tuple = &(scan->rs_ctup);
+
+	if (BufferIsValid(scan->rs_cbuf))
+		ReleaseBuffer(scan->rs_cbuf);
+	scan->rs_cbuf = InvalidBuffer;
+	scan->rs_cblock = InvalidBlockNumber;
+	tuple->t_data = NULL;
+	scan->rs_inited = false;
+	return;
 }
 
 #if defined(DISABLE_COMPLEX_MACRO)
@@ -5896,7 +5933,8 @@ acquire_next_sampletup(HeapScanDesc scan)
 
 	if(scan->rs_curindex < scan->rs_samplesize)
 	{
-		pass_tuple = heap_copytuple(scan->rs_samplerows[scan->rs_curindex]);
+		/* Get the head tuple from sampled tuple array */
+		pass_tuple = scan->rs_samplerows[scan->rs_curindex];
 		tuple->t_len = pass_tuple->t_len;
 		tuple->t_self = pass_tuple->t_self;
 		tuple->t_tableOid = pass_tuple->t_tableOid;
@@ -5905,6 +5943,7 @@ acquire_next_sampletup(HeapScanDesc scan)
 	}
 	else
 	{
+		/* No more tuple to return */
 		scan->rs_cbuf = InvalidBuffer;
 		scan->rs_cblock = InvalidBlockNumber;
 		tuple->t_data = NULL;
@@ -5923,13 +5962,7 @@ acquire_next_sampletup(HeapScanDesc scan)
 static void
 acquire_block_sample(HeapScanDesc scan)
 {
-	int			numrows = 0;	/* # rows now in reservoir */
-	double		samplerows = 0; /* total # rows collected */
-	double		rowstoskip = -1;	/* -1 means not set yet */
-	BlockNumber	totalblocks = scan->rs_nblocks;
-	double		rstate;
-	int			targrows = scan->targrows;
-	HeapTuple	*rows = scan->rs_samplerows;
+	//HeapTuple	*rows = scan->rs_samplerows;
 	Relation onerel = scan->rs_rd;
 	BlockSamplerData bs;
 	void		*rand_state = scan->rs_randstate;
@@ -6033,8 +6066,14 @@ acquire_block_sample(HeapScanDesc scan)
 	}
 
 	scan->rs_samplesize = numrows;
-	scan->rs_sampleinited = true;
+//=======
+//	double totalrows, totaldeadrows;
+//
+//	scan->rs_samplesize = acquire_vitter_rows(onerel, 0, scan->rs_samplerows, scan->targrows,
+//					scan->rs_nblocks, scan->rs_strategy,
+//					&totalrows, &totaldeadrows, false);
 
+	scan->rs_sampleinited = true;
 	return;
 }
 

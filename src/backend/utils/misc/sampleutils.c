@@ -17,8 +17,13 @@
 #include "postgres.h"
 
 #include "utils/sampleutils.h"
+#include "storage/procarray.h"
+#include "storage/bufmgr.h"
+#include "utils/tqual.h"
+#include "utils/rel.h"
 
 
+static int	compare_rows(const void *a, const void *b);
 
 /*
  * BlockSampler_Init -- prepare for random sampling of blocknumbers
@@ -234,6 +239,305 @@ anl_random_fract(void *state)
 	}else{
 		return sample_random(state);
 	}
+}
+
+/*
+ * acquire_sample_rows -- acquire a random sample of rows from the table
+ *
+ *
+ * Selected rows are returned in the caller-allocated array rows[], which
+ * must have at least targrows entries.
+ * The actual number of rows selected is returned as the function result.
+ * We also estimate the total numbers of live and dead rows in the table,
+ * and return them into *totalrows and *totaldeadrows, respectively.
+ *
+ * The returned list of tuples is in order by physical position in the table.
+ * (We will rely on this later to derive correlation estimates.)
+ *
+ * As of May 2004 we use a new two-stage method:  Stage one selects up
+ * to targrows random blocks (or all blocks, if there aren't so many).
+ * Stage two scans these blocks and uses the Vitter algorithm to create
+ * a random sample of targrows rows (or less, if there are less in the
+ * sample of blocks).  The two stages are executed simultaneously: each
+ * block is processed as soon as stage one returns its number and while
+ * the rows are read stage two controls which ones are to be inserted
+ * into the sample.
+ *
+ * Although every row has an equal chance of ending up in the final
+ * sample, this sampling method is not perfect: not every possible
+ * sample has an equal chance of being selected.  For large relations
+ * the number of different blocks represented by the sample tends to be
+ * too small.  We can live with that for now.  Improvements are welcome.
+ *
+ * An important property of this sampling method is that because we do
+ * look at a statistically unbiased set of blocks, we should get
+ * unbiased estimates of the average numbers of live and dead rows per
+ * block.  The previous sampling method put too much credence in the row
+ * density near the start of the table.
+ */
+int
+acquire_vitter_rows(Relation onerel, int elevel, HeapTuple *rows, int targrows,
+					BlockNumber totalblocks, BufferAccessStrategy vac_strategy,
+					double *totalrows, double *totaldeadrows,
+                    bool isanalyze)
+{
+	int			numrows = 0;	/* # rows now in reservoir */
+	double		samplerows = 0; /* total # rows collected */
+	double		liverows = 0;	/* # live rows seen */
+	double		deadrows = 0;	/* # dead rows seen */
+	double		rowstoskip = -1;	/* -1 means not set yet */
+	TransactionId OldestXmin;
+	BlockSamplerData bs;
+	double		rstate;
+
+	Assert(targrows > 0);
+
+	/* Need a cutoff xmin for HeapTupleSatisfiesVacuum */
+	OldestXmin = GetOldestXmin(onerel->rd_rel->relisshared, true);
+
+	/* Prepare for sampling block numbers */
+	BlockSampler_Init(&bs, totalblocks, targrows);
+	/* Prepare for sampling rows */
+	rstate = anl_init_selection_state(targrows);
+
+	/* Outer loop over blocks to sample */
+	while (BlockSampler_HasMore(&bs))
+	{
+		BlockNumber targblock = BlockSampler_Next(&bs);
+		Buffer		targbuffer;
+		Page		targpage;
+		OffsetNumber targoffset,
+					maxoffset;
+
+		vacuum_delay_point();
+
+		/*
+		 * We must maintain a pin on the target page's buffer to ensure that
+		 * the maxoffset value stays good (else concurrent VACUUM might delete
+		 * tuples out from under us).  Hence, pin the page until we are done
+		 * looking at it.  We also choose to hold sharelock on the buffer
+		 * throughout --- we could release and re-acquire sharelock for each
+		 * tuple, but since we aren't doing much work per tuple, the extra
+		 * lock traffic is probably better avoided.
+		 */
+		targbuffer = ReadBufferExtended(onerel, MAIN_FORKNUM, targblock,
+										RBM_NORMAL, vac_strategy);
+		LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
+		targpage = BufferGetPage(targbuffer);
+		maxoffset = PageGetMaxOffsetNumber(targpage);
+
+		/* Inner loop over all tuples on the selected page */
+		for (targoffset = FirstOffsetNumber; targoffset <= maxoffset; targoffset++)
+		{
+			ItemId		itemid;
+			HeapTupleData targtuple;
+			bool		sample_it = false;
+
+			itemid = PageGetItemId(targpage, targoffset);
+
+			/*
+			 * We ignore unused and redirect line pointers.  DEAD line
+			 * pointers should be counted as dead, because we need vacuum to
+			 * run to get rid of them.	Note that this rule agrees with the
+			 * way that heap_page_prune() counts things.
+			 */
+			if (!ItemIdIsNormal(itemid))
+			{
+				if (ItemIdIsDead(itemid))
+					deadrows += 1;
+				continue;
+			}
+
+			ItemPointerSet(&targtuple.t_self, targblock, targoffset);
+
+			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
+			targtuple.t_len = ItemIdGetLength(itemid);
+
+			switch (HeapTupleSatisfiesVacuum(targtuple.t_data,
+											 OldestXmin,
+											 targbuffer))
+			{
+				case HEAPTUPLE_LIVE:
+					sample_it = true;
+					liverows += 1;
+					break;
+
+				case HEAPTUPLE_DEAD:
+				case HEAPTUPLE_RECENTLY_DEAD:
+					/* Count dead and recently-dead rows */
+					deadrows += 1;
+					break;
+
+				case HEAPTUPLE_INSERT_IN_PROGRESS:
+
+					/*
+					 * Insert-in-progress rows are not counted.  We assume
+					 * that when the inserting transaction commits or aborts,
+					 * it will send a stats message to increment the proper
+					 * count.  This works right only if that transaction ends
+					 * after we finish analyzing the table; if things happen
+					 * in the other order, its stats update will be
+					 * overwritten by ours.  However, the error will be large
+					 * only if the other transaction runs long enough to
+					 * insert many tuples, so assuming it will finish after us
+					 * is the safer option.
+					 *
+					 * A special case is that the inserting transaction might
+					 * be our own.	In this case we should count and sample
+					 * the row, to accommodate users who load a table and
+					 * analyze it in one transaction.  (pgstat_report_analyze
+					 * has to adjust the numbers we send to the stats
+					 * collector to make this come out right.)
+					 */
+					if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmin(targtuple.t_data)))
+					{
+						sample_it = true;
+						liverows += 1;
+					}
+					break;
+
+				case HEAPTUPLE_DELETE_IN_PROGRESS:
+
+					/*
+					 * We count delete-in-progress rows as still live, using
+					 * the same reasoning given above; but we don't bother to
+					 * include them in the sample.
+					 *
+					 * If the delete was done by our own transaction, however,
+					 * we must count the row as dead to make
+					 * pgstat_report_analyze's stats adjustments come out
+					 * right.  (Note: this works out properly when the row was
+					 * both inserted and deleted in our xact.)
+					 */
+					if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(targtuple.t_data)))
+						deadrows += 1;
+					else
+						liverows += 1;
+					break;
+
+				default:
+					elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result");
+					break;
+			}
+
+			if (sample_it)
+			{
+				/*
+				 * The first targrows sample rows are simply copied into the
+				 * reservoir. Then we start replacing tuples in the sample
+				 * until we reach the end of the relation.	This algorithm is
+				 * from Jeff Vitter's paper (see full citation below). It
+				 * works by repeatedly computing the number of tuples to skip
+				 * before selecting a tuple, which replaces a randomly chosen
+				 * element of the reservoir (current set of tuples).  At all
+				 * times the reservoir is a true random sample of the tuples
+				 * we've passed over so far, so when we fall off the end of
+				 * the relation we're done.
+				 */
+				if (numrows < targrows)
+					rows[numrows++] = heap_copytuple(&targtuple);
+				else
+				{
+					/*
+					 * t in Vitter's paper is the number of records already
+					 * processed.  If we need to compute a new S value, we
+					 * must use the not-yet-incremented value of samplerows as
+					 * t.
+					 */
+					if (rowstoskip < 0)
+						rowstoskip = anl_get_next_S(samplerows, targrows,
+													&rstate);
+
+					if (rowstoskip <= 0)
+					{
+						/*
+						 * Found a suitable tuple, so save it, replacing one
+						 * old tuple at random
+						 */
+						int			k = (int) (targrows * anl_random_fract());
+
+						Assert(k >= 0 && k < targrows);
+						heap_freetuple(rows[k]);
+						rows[k] = heap_copytuple(&targtuple);
+					}
+
+					rowstoskip -= 1;
+				}
+
+				samplerows += 1;
+			}
+		}
+
+		/* Now release the lock and pin on the page */
+		UnlockReleaseBuffer(targbuffer);
+	}
+
+	if(isanalyze)
+	{
+		/*
+		 * If we didn't find as many tuples as we wanted then we're done. No sort
+		 * is needed, since they're already in order.
+		 *
+		 * Otherwise we need to sort the collected tuples by position
+		 * (itempointer). It's not worth worrying about corner cases where the
+		 * tuples are already sorted.
+		 */
+		if (numrows == targrows)
+			qsort((void *) rows, numrows, sizeof(HeapTuple), compare_rows);
+	
+		/*
+		 * Estimate total numbers of rows in relation.	For live rows, use
+		 * vac_estimate_reltuples; for dead rows, we have no source of old
+		 * information, so we have to assume the density is the same in unseen
+		 * pages as in the pages we scanned.
+		 */
+		*totalrows = vac_estimate_reltuples(onerel, true,
+											totalblocks,
+											bs.m,
+											liverows);
+		if (bs.m > 0)
+			*totaldeadrows = floor((deadrows / bs.m) * totalblocks + 0.5);
+		else
+			*totaldeadrows = 0.0;
+	
+		/*
+		 * Emit some interesting relation info
+		 */
+		ereport(elevel,
+				(errmsg("\"%s\": scanned %d of %u pages, "
+						"containing %.0f live rows and %.0f dead rows; "
+						"%d rows in sample, %.0f estimated total rows",
+						RelationGetRelationName(onerel),
+						bs.m, totalblocks,
+						liverows, deadrows,
+						numrows, *totalrows)));
+	}
+
+	return numrows;
+}
+
+/*
+ *  * qsort comparator for sorting rows[] array
+ *   */
+static int
+compare_rows(const void *a, const void *b)
+{
+	HeapTuple	ha = *(const HeapTuple *) a;
+	HeapTuple	hb = *(const HeapTuple *) b;
+	BlockNumber ba = ItemPointerGetBlockNumber(&ha->t_self);
+	OffsetNumber oa = ItemPointerGetOffsetNumber(&ha->t_self);
+	BlockNumber bb = ItemPointerGetBlockNumber(&hb->t_self);
+	OffsetNumber ob = ItemPointerGetOffsetNumber(&hb->t_self);
+
+	if (ba < bb)
+		return -1;
+	if (ba > bb)
+		return 1;
+	if (oa < ob)
+		return -1;
+	if (oa > ob)
+		return 1;
+	return 0;
 }
 
 /*
