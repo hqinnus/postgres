@@ -2034,6 +2034,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Sets the delay in microseconds between transaction commit and "
 						 "flushing WAL to disk."),
 			NULL
+			/* we have no microseconds designation, so can't supply units here */
 		},
 		&CommitDelay,
 		0, 0, 100000,
