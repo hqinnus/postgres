@@ -63,8 +63,6 @@ SampleNext(SampleScanState *node)
 
 	/*
 	 * get information from the estate and scan state.
-	 * Though ScanDirection is displayed here, it is not used in
-	 * heap_getnext when doing samplescan.
 	 */
 	scandesc = node->ss.ss_currentScanDesc;
 	estate = node->ss.ps.state;
@@ -94,7 +92,8 @@ SampleNext(SampleScanState *node)
 }
 
 /*
- * SampleRecheck -- access method routine to recheck a tuple in EvalPlanQual
+ * SampleRecheck -- access method routine to recheck a tuple in EvalPlanQual.
+ * Same as SeqScan, should modify?
  */
 static bool
 SampleRecheck(SampleScanState *node, TupleTableSlot *slot)
@@ -256,13 +255,13 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 
 /* ----------------------------------------------------------------
  *						Join Support
- * To understand this part more, read at 
- * 1. execAmi.c, ExecSupportsMarkRestore
+ * XXX: This part needs more work.
+ * 1. To understand , read at execAmi.c, ExecSupportsMarkRestore
  * 2. The below part is still seqscan code, not changed yet.
  * 3. ReScan is needed by join methods, Others used by MergeJoin
- * 4. For now, samplescan result will be materialized, which will skip
- *    below methods, but doing so is quite slow. Need to refine the 
- *    optimisation for tablesample and implement below routines.
+ * 4. In Optimizer, the Join support also needs update, like row 
+ *    estimate, cost estimate, and join cost estimate, needs to 
+ *    go better.
  * ----------------------------------------------------------------
  */
 

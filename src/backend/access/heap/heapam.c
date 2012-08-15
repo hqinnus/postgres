@@ -5896,8 +5896,8 @@ heap_sync(Relation rel)
 }
 
 /*
- * acquire_next_sampletup -- algo modified from acquire_sample_rows from analyze.c.
- * The core algo is inside acquire_block_sample, which is also used by analyze.c now.
+ * acquire_next_sampletup -- algo modified from acquire_sample_rows in analyze.c.
+ * The core algo is inside acquire_block_sample.
  */
 static void
 acquire_next_sampletup(HeapScanDesc scan)
@@ -5905,9 +5905,11 @@ acquire_next_sampletup(HeapScanDesc scan)
 	HeapTuple		tuple = &(scan->rs_ctup);
 	HeapTuple		pass_tuple;
 
+	/* Collect the sample first if not yet */
 	if(!scan->rs_sampleinited)
 		acquire_block_sample(scan);
 
+	/* Just retrieve tuple one by one from the sample collection */
 	if(scan->rs_curindex < scan->rs_samplesize)
 	{
 		/* Get the head tuple from sampled tuple array */

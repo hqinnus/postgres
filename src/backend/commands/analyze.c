@@ -85,7 +85,7 @@ static VacAttrStats *examine_attribute(Relation onerel, int attnum,
 static int acquire_sample_rows(Relation onerel, int elevel,
 					HeapTuple *rows, int targrows,
 					double *totalrows, double *totaldeadrows);
-static int compare_rows(const void *a, const void *b);
+static int	compare_rows(const void *a, const void *b);
 static int acquire_inherited_sample_rows(Relation onerel, int elevel,
 							  HeapTuple *rows, int targrows,
 							  double *totalrows, double *totaldeadrows);
@@ -964,7 +964,7 @@ acquire_sample_rows(Relation onerel, int elevel,
 	double		liverows = 0;	/* # live rows seen */
 	double		deadrows = 0;	/* # dead rows seen */
 	double		rowstoskip = -1;	/* -1 means not set yet */
-	BlockNumber	totalblocks;
+	BlockNumber totalblocks;
 	TransactionId OldestXmin;
 	BlockSamplerData bs;
 	double		rstate;
