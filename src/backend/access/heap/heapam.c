@@ -5951,6 +5951,14 @@ acquire_block_sample(HeapScanDesc scan)
 	void	*rand_state = scan->rs_randstate;
 	double		rstate;
 
+	/* If the required sample size is 0, we just return */
+	if(targrows == 0)
+	{
+		scan->rs_samplesize = 0;
+		scan->rs_sampleinited = true;
+		return;
+	}
+
 	Assert(targrows > 0);
 
 	/* Prepare for sampling block numbers */

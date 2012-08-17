@@ -224,8 +224,7 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	if(sample_method == SAMPLE_BERNOULLI)
 	{
 		double numtuples = scan->rs_rd->rd_rel->reltuples;
-		double row_test = numtuples*sample_percent/100;
-		int targrows = (int)floor(row_test + 0.5);
+		int targrows = (int)floor(numtuples*sample_percent/100 + 0.5);
 
 		scan->targrows = targrows;
 		scan->rs_samplerows = (HeapTuple *)palloc(targrows * sizeof(HeapTuple));

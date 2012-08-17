@@ -1,0 +1,188 @@
+--
+-- TABLESAMPLE TEST
+--
+CREATE TABLE sample (id INT, name text);
+INSERT INTO sample VALUES (1, 'victor');
+INSERT INTO sample VALUES (2, 'peter');
+INSERT INTO sample VALUES (3, 'james');
+INSERT INTO sample VALUES (4, 'paul');
+INSERT INTO sample VALUES (5, 'kate');
+INSERT INTO sample VALUES (6, 'jane');
+INSERT INTO sample VALUES (7, 'samual');
+INSERT INTO sample VALUES (8, 'david');
+INSERT INTO sample VALUES (9, 'job');
+INSERT INTO sample VALUES (10, 'neil');
+INSERT INTO sample VALUES (11, 'victor');
+INSERT INTO sample VALUES (12, 'peter');
+INSERT INTO sample VALUES (13, 'james');
+INSERT INTO sample VALUES (14, 'paul');
+INSERT INTO sample VALUES (15, 'kate');
+INSERT INTO sample VALUES (16, 'jane');
+INSERT INTO sample VALUES (17, 'samual');
+INSERT INTO sample VALUES (18, 'david');
+INSERT INTO sample VALUES (19, 'job');
+INSERT INTO sample VALUES (20, 'neil');
+ANALYZE sample;
+SELECT * FROM sample TABLESAMPLE SYSTEM (60) REPEATABLE (10);
+ id |  name  
+----+--------
+  1 | victor
+  2 | peter
+  3 | james
+  4 | paul
+  5 | kate
+  6 | jane
+  7 | samual
+  8 | david
+  9 | job
+ 10 | neil
+ 11 | victor
+ 12 | peter
+ 13 | james
+ 14 | paul
+ 15 | kate
+ 16 | jane
+ 17 | samual
+ 18 | david
+ 19 | job
+ 20 | neil
+(20 rows)
+
+SELECT * FROM sample TABLESAMPLE BERNOULLI (70) REPEATABLE (11);
+ id |  name  
+----+--------
+ 18 | david
+  2 | peter
+  3 | james
+ 15 | kate
+  5 | kate
+  6 | jane
+  7 | samual
+ 20 | neil
+  9 | job
+ 10 | neil
+ 11 | victor
+ 12 | peter
+ 16 | jane
+ 17 | samual
+(14 rows)
+
+SELECT * FROM sample TABLESAMPLE BERNOULLI (70) REPEATABLE (11);
+ id |  name  
+----+--------
+ 18 | david
+  2 | peter
+  3 | james
+ 15 | kate
+  5 | kate
+  6 | jane
+  7 | samual
+ 20 | neil
+  9 | job
+ 10 | neil
+ 11 | victor
+ 12 | peter
+ 16 | jane
+ 17 | samual
+(14 rows)
+
+SELECT * FROM sample TABLESAMPLE BERNOULLI (70) REPEATABLE (19);
+ id |  name  
+----+--------
+  1 | victor
+ 18 | david
+  3 | james
+ 17 | samual
+  5 | kate
+  6 | jane
+  7 | samual
+  8 | david
+ 15 | kate
+ 19 | job
+ 11 | victor
+ 12 | peter
+ 13 | james
+ 14 | paul
+(14 rows)
+
+SELECT * FROM sample TABLESAMPLE BERNOULLI (7) REPEATABLE (19);
+ id |  name  
+----+--------
+  7 | samual
+(1 row)
+
+SELECT * FROM sample TABLESAMPLE BERNOULLI (1) REPEATABLE (19);
+ id | name 
+----+------
+(0 rows)
+
+SELECT * FROM sample TABLESAMPLE SYSTEM (65) REPEATABLE (20);
+ id |  name  
+----+--------
+  1 | victor
+  2 | peter
+  3 | james
+  4 | paul
+  5 | kate
+  6 | jane
+  7 | samual
+  8 | david
+  9 | job
+ 10 | neil
+ 11 | victor
+ 12 | peter
+ 13 | james
+ 14 | paul
+ 15 | kate
+ 16 | jane
+ 17 | samual
+ 18 | david
+ 19 | job
+ 20 | neil
+(20 rows)
+
+SELECT * FROM sample TABLESAMPLE SYSTEM (65) REPEATABLE (2);
+ id | name 
+----+------
+(0 rows)
+
+SELECT * FROM sample TABLESAMPLE SYSTEM (65) REPEATABLE (20);
+ id |  name  
+----+--------
+  1 | victor
+  2 | peter
+  3 | james
+  4 | paul
+  5 | kate
+  6 | jane
+  7 | samual
+  8 | david
+  9 | job
+ 10 | neil
+ 11 | victor
+ 12 | peter
+ 13 | james
+ 14 | paul
+ 15 | kate
+ 16 | jane
+ 17 | samual
+ 18 | david
+ 19 | job
+ 20 | neil
+(20 rows)
+
+SELECT * FROM sample TABLESAMPLE BERNOULLI (70) REPEATABLE (11) order by id limit 5;
+ id |  name  
+----+--------
+  2 | peter
+  3 | james
+  5 | kate
+  6 | jane
+  7 | samual
+(5 rows)
+
+SELECT * INTO tmp FROM sample TABLESAMPLE BERNOULLI (4);
+DROP TABLE tmp;
+SELECT * INTO tmp FROM sample TABLESAMPLE SYSTEM (20);
+DROP TABLE tmp;
+DROP TABLE sample;
