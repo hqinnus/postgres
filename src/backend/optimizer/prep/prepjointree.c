@@ -7,17 +7,16 @@
  *		pull_up_sublinks
  *		inline_set_returning_functions
  *		pull_up_subqueries
- *		flatten_simple_union_all
  *		do expression preprocessing (including flattening JOIN alias vars)
  *		reduce_outer_joins
  *
  *
- * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  src/backend/optimizer/prep/prepjointree.c
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepjointree.c,v 1.73 2010/07/06 19:18:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -31,6 +30,7 @@
 #include "optimizer/prep.h"
 #include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
+#include "optimizer/var.h"
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
@@ -58,16 +58,10 @@ typedef struct reduce_outer_joins_state
 static Node *pull_up_sublinks_jointree_recurse(PlannerInfo *root, Node *jtnode,
 								  Relids *relids);
 static Node *pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
-							  Node **jtlink1, Relids available_rels1,
-							  Node **jtlink2, Relids available_rels2);
-static Node *pull_up_subqueries_recurse(PlannerInfo *root, Node *jtnode,
-						   JoinExpr *lowest_outer_join,
-						   JoinExpr *lowest_nulling_outer_join,
-						   AppendRelInfo *containing_appendrel);
+							  Relids available_rels, Node **jtlink);
 static Node *pull_up_simple_subquery(PlannerInfo *root, Node *jtnode,
 						RangeTblEntry *rte,
 						JoinExpr *lowest_outer_join,
-						JoinExpr *lowest_nulling_outer_join,
 						AppendRelInfo *containing_appendrel);
 static Node *pull_up_simple_union_all(PlannerInfo *root, Node *jtnode,
 						 RangeTblEntry *rte);
@@ -76,21 +70,18 @@ static void pull_up_union_leaf_queries(Node *setOp, PlannerInfo *root,
 						   int childRToffset);
 static void make_setop_translation_list(Query *query, Index newvarno,
 							List **translated_vars);
-static bool is_simple_subquery(Query *subquery, RangeTblEntry *rte,
-				   JoinExpr *lowest_outer_join);
+static bool is_simple_subquery(Query *subquery);
 static bool is_simple_union_all(Query *subquery);
 static bool is_simple_union_all_recurse(Node *setOp, Query *setOpQuery,
 							List *colTypes);
 static bool is_safe_append_member(Query *subquery);
 static void replace_vars_in_jointree(Node *jtnode,
 						 pullup_replace_vars_context *context,
-						 JoinExpr *lowest_nulling_outer_join);
+						 JoinExpr *lowest_outer_join);
 static Node *pullup_replace_vars(Node *expr,
 					pullup_replace_vars_context *context);
 static Node *pullup_replace_vars_callback(Var *var,
 							 replace_rte_variables_context *context);
-static Query *pullup_replace_vars_subquery(Query *query,
-							 pullup_replace_vars_context *context);
 static reduce_outer_joins_state *reduce_outer_joins_pass1(Node *jtnode);
 static void reduce_outer_joins_pass2(Node *jtnode,
 						 reduce_outer_joins_state *state,
@@ -201,9 +192,8 @@ pull_up_sublinks_jointree_recurse(PlannerInfo *root, Node *jtnode,
 		/* Set up a link representing the rebuilt jointree */
 		jtlink = (Node *) newf;
 		/* Now process qual --- all children are available for use */
-		newf->quals = pull_up_sublinks_qual_recurse(root, f->quals,
-													&jtlink, frelids,
-													NULL, NULL);
+		newf->quals = pull_up_sublinks_qual_recurse(root, f->quals, frelids,
+													&jtlink);
 
 		/*
 		 * Note that the result will be either newf, or a stack of JoinExprs
@@ -247,6 +237,15 @@ pull_up_sublinks_jointree_recurse(PlannerInfo *root, Node *jtnode,
 		 * point of the available_rels machinations is to ensure that we only
 		 * pull up quals for which that's okay.
 		 *
+		 * XXX for the moment, we refrain from pulling up IN/EXISTS clauses
+		 * appearing in LEFT or RIGHT join conditions.	Although it is
+		 * semantically valid to do so under the above conditions, we end up
+		 * with a query in which the semijoin or antijoin must be evaluated
+		 * below the outer join, which could perform far worse than leaving it
+		 * as a sublink that is executed only for row pairs that meet the
+		 * other join conditions.  Fixing this seems to require considerable
+		 * restructuring of the executor, but maybe someday it can happen.
+		 *
 		 * We don't expect to see any pre-existing JOIN_SEMI or JOIN_ANTI
 		 * nodes here.
 		 */
@@ -254,25 +253,26 @@ pull_up_sublinks_jointree_recurse(PlannerInfo *root, Node *jtnode,
 		{
 			case JOIN_INNER:
 				j->quals = pull_up_sublinks_qual_recurse(root, j->quals,
-														 &jtlink,
 														 bms_union(leftrelids,
 																rightrelids),
-														 NULL, NULL);
+														 &jtlink);
 				break;
 			case JOIN_LEFT:
+#ifdef NOT_USED					/* see XXX comment above */
 				j->quals = pull_up_sublinks_qual_recurse(root, j->quals,
-														 &j->rarg,
 														 rightrelids,
-														 NULL, NULL);
+														 &j->rarg);
+#endif
 				break;
 			case JOIN_FULL:
 				/* can't do anything with full-join quals */
 				break;
 			case JOIN_RIGHT:
+#ifdef NOT_USED					/* see XXX comment above */
 				j->quals = pull_up_sublinks_qual_recurse(root, j->quals,
-														 &j->larg,
 														 leftrelids,
-														 NULL, NULL);
+														 &j->larg);
+#endif
 				break;
 			default:
 				elog(ERROR, "unrecognized join type: %d",
@@ -302,22 +302,14 @@ pull_up_sublinks_jointree_recurse(PlannerInfo *root, Node *jtnode,
 /*
  * Recurse through top-level qual nodes for pull_up_sublinks()
  *
- * jtlink1 points to the link in the jointree where any new JoinExprs should
- * be inserted if they reference available_rels1 (i.e., available_rels1
- * denotes the relations present underneath jtlink1).  Optionally, jtlink2 can
- * point to a second link where new JoinExprs should be inserted if they
- * reference available_rels2 (pass NULL for both those arguments if not used).
- * Note that SubLinks referencing both sets of variables cannot be optimized.
- * If we find multiple pull-up-able SubLinks, they'll get stacked onto jtlink1
- * and/or jtlink2 in the order we encounter them.  We rely on subsequent
- * optimization to rearrange the stack if appropriate.
- *
- * Returns the replacement qual node, or NULL if the qual should be removed.
+ * jtlink points to the link in the jointree where any new JoinExprs should be
+ * inserted.  If we find multiple pull-up-able SubLinks, they'll get stacked
+ * there in the order we encounter them.  We rely on subsequent optimization
+ * to rearrange the stack if appropriate.
  */
 static Node *
 pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
-							  Node **jtlink1, Relids available_rels1,
-							  Node **jtlink2, Relids available_rels2)
+							  Relids available_rels, Node **jtlink)
 {
 	if (node == NULL)
 		return NULL;
@@ -325,114 +317,31 @@ pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
 	{
 		SubLink    *sublink = (SubLink *) node;
 		JoinExpr   *j;
-		Relids		child_rels;
 
 		/* Is it a convertible ANY or EXISTS clause? */
 		if (sublink->subLinkType == ANY_SUBLINK)
 		{
-			if ((j = convert_ANY_sublink_to_join(root, sublink,
-												 available_rels1)) != NULL)
+			j = convert_ANY_sublink_to_join(root, sublink,
+											available_rels);
+			if (j)
 			{
-				/* Yes; insert the new join node into the join tree */
-				j->larg = *jtlink1;
-				*jtlink1 = (Node *) j;
-				/* Recursively process pulled-up jointree nodes */
-				j->rarg = pull_up_sublinks_jointree_recurse(root,
-															j->rarg,
-															&child_rels);
-
-				/*
-				 * Now recursively process the pulled-up quals.  Any inserted
-				 * joins can get stacked onto either j->larg or j->rarg,
-				 * depending on which rels they reference.
-				 */
-				j->quals = pull_up_sublinks_qual_recurse(root,
-														 j->quals,
-														 &j->larg,
-														 available_rels1,
-														 &j->rarg,
-														 child_rels);
-				/* Return NULL representing constant TRUE */
-				return NULL;
-			}
-			if (available_rels2 != NULL &&
-				(j = convert_ANY_sublink_to_join(root, sublink,
-												 available_rels2)) != NULL)
-			{
-				/* Yes; insert the new join node into the join tree */
-				j->larg = *jtlink2;
-				*jtlink2 = (Node *) j;
-				/* Recursively process pulled-up jointree nodes */
-				j->rarg = pull_up_sublinks_jointree_recurse(root,
-															j->rarg,
-															&child_rels);
-
-				/*
-				 * Now recursively process the pulled-up quals.  Any inserted
-				 * joins can get stacked onto either j->larg or j->rarg,
-				 * depending on which rels they reference.
-				 */
-				j->quals = pull_up_sublinks_qual_recurse(root,
-														 j->quals,
-														 &j->larg,
-														 available_rels2,
-														 &j->rarg,
-														 child_rels);
-				/* Return NULL representing constant TRUE */
+				/* Yes, insert the new join node into the join tree */
+				j->larg = *jtlink;
+				*jtlink = (Node *) j;
+				/* and return NULL representing constant TRUE */
 				return NULL;
 			}
 		}
 		else if (sublink->subLinkType == EXISTS_SUBLINK)
 		{
-			if ((j = convert_EXISTS_sublink_to_join(root, sublink, false,
-													available_rels1)) != NULL)
+			j = convert_EXISTS_sublink_to_join(root, sublink, false,
+											   available_rels);
+			if (j)
 			{
-				/* Yes; insert the new join node into the join tree */
-				j->larg = *jtlink1;
-				*jtlink1 = (Node *) j;
-				/* Recursively process pulled-up jointree nodes */
-				j->rarg = pull_up_sublinks_jointree_recurse(root,
-															j->rarg,
-															&child_rels);
-
-				/*
-				 * Now recursively process the pulled-up quals.  Any inserted
-				 * joins can get stacked onto either j->larg or j->rarg,
-				 * depending on which rels they reference.
-				 */
-				j->quals = pull_up_sublinks_qual_recurse(root,
-														 j->quals,
-														 &j->larg,
-														 available_rels1,
-														 &j->rarg,
-														 child_rels);
-				/* Return NULL representing constant TRUE */
-				return NULL;
-			}
-			if (available_rels2 != NULL &&
-				(j = convert_EXISTS_sublink_to_join(root, sublink, false,
-													available_rels2)) != NULL)
-			{
-				/* Yes; insert the new join node into the join tree */
-				j->larg = *jtlink2;
-				*jtlink2 = (Node *) j;
-				/* Recursively process pulled-up jointree nodes */
-				j->rarg = pull_up_sublinks_jointree_recurse(root,
-															j->rarg,
-															&child_rels);
-
-				/*
-				 * Now recursively process the pulled-up quals.  Any inserted
-				 * joins can get stacked onto either j->larg or j->rarg,
-				 * depending on which rels they reference.
-				 */
-				j->quals = pull_up_sublinks_qual_recurse(root,
-														 j->quals,
-														 &j->larg,
-														 available_rels2,
-														 &j->rarg,
-														 child_rels);
-				/* Return NULL representing constant TRUE */
+				/* Yes, insert the new join node into the join tree */
+				j->larg = *jtlink;
+				*jtlink = (Node *) j;
+				/* and return NULL representing constant TRUE */
 				return NULL;
 			}
 		}
@@ -444,61 +353,19 @@ pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
 		/* If the immediate argument of NOT is EXISTS, try to convert */
 		SubLink    *sublink = (SubLink *) get_notclausearg((Expr *) node);
 		JoinExpr   *j;
-		Relids		child_rels;
 
 		if (sublink && IsA(sublink, SubLink))
 		{
 			if (sublink->subLinkType == EXISTS_SUBLINK)
 			{
-				if ((j = convert_EXISTS_sublink_to_join(root, sublink, true,
-												   available_rels1)) != NULL)
+				j = convert_EXISTS_sublink_to_join(root, sublink, true,
+												   available_rels);
+				if (j)
 				{
-					/* Yes; insert the new join node into the join tree */
-					j->larg = *jtlink1;
-					*jtlink1 = (Node *) j;
-					/* Recursively process pulled-up jointree nodes */
-					j->rarg = pull_up_sublinks_jointree_recurse(root,
-																j->rarg,
-																&child_rels);
-
-					/*
-					 * Now recursively process the pulled-up quals.  Because
-					 * we are underneath a NOT, we can't pull up sublinks that
-					 * reference the left-hand stuff, but it's still okay to
-					 * pull up sublinks referencing j->rarg.
-					 */
-					j->quals = pull_up_sublinks_qual_recurse(root,
-															 j->quals,
-															 &j->rarg,
-															 child_rels,
-															 NULL, NULL);
-					/* Return NULL representing constant TRUE */
-					return NULL;
-				}
-				if (available_rels2 != NULL &&
-					(j = convert_EXISTS_sublink_to_join(root, sublink, true,
-												   available_rels2)) != NULL)
-				{
-					/* Yes; insert the new join node into the join tree */
-					j->larg = *jtlink2;
-					*jtlink2 = (Node *) j;
-					/* Recursively process pulled-up jointree nodes */
-					j->rarg = pull_up_sublinks_jointree_recurse(root,
-																j->rarg,
-																&child_rels);
-
-					/*
-					 * Now recursively process the pulled-up quals.  Because
-					 * we are underneath a NOT, we can't pull up sublinks that
-					 * reference the left-hand stuff, but it's still okay to
-					 * pull up sublinks referencing j->rarg.
-					 */
-					j->quals = pull_up_sublinks_qual_recurse(root,
-															 j->quals,
-															 &j->rarg,
-															 child_rels,
-															 NULL, NULL);
-					/* Return NULL representing constant TRUE */
+					/* Yes, insert the new join node into the join tree */
+					j->larg = *jtlink;
+					*jtlink = (Node *) j;
+					/* and return NULL representing constant TRUE */
 					return NULL;
 				}
 			}
@@ -519,10 +386,8 @@ pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
 
 			newclause = pull_up_sublinks_qual_recurse(root,
 													  oldclause,
-													  jtlink1,
-													  available_rels1,
-													  jtlink2,
-													  available_rels2);
+													  available_rels,
+													  jtlink);
 			if (newclause)
 				newclauses = lappend(newclauses, newclause);
 		}
@@ -579,7 +444,6 @@ inline_set_returning_functions(PlannerInfo *root)
 				rte->funcexpr = NULL;
 				rte->funccoltypes = NIL;
 				rte->funccoltypmods = NIL;
-				rte->funccolcollations = NIL;
 			}
 		}
 	}
@@ -593,28 +457,10 @@ inline_set_returning_functions(PlannerInfo *root)
  *		Also, subqueries that are simple UNION ALL structures can be
  *		converted into "append relations".
  *
- * This recursively processes the jointree and returns a modified jointree.
- */
-Node *
-pull_up_subqueries(PlannerInfo *root, Node *jtnode)
-{
-	/* Start off with no containing join nor appendrel */
-	return pull_up_subqueries_recurse(root, jtnode, NULL, NULL, NULL);
-}
-
-/*
- * pull_up_subqueries_recurse
- *		Recursive guts of pull_up_subqueries.
- *
- * If this jointree node is within either side of an outer join, then
- * lowest_outer_join references the lowest such JoinExpr node; otherwise
- * it is NULL.  We use this to constrain the effects of LATERAL subqueries.
- *
  * If this jointree node is within the nullable side of an outer join, then
- * lowest_nulling_outer_join references the lowest such JoinExpr node;
- * otherwise it is NULL.  This forces use of the PlaceHolderVar mechanism for
- * references to non-nullable targetlist items, but only for references above
- * that join.
+ * lowest_outer_join references the lowest such JoinExpr node; otherwise it
+ * is NULL.  This forces use of the PlaceHolderVar mechanism for references
+ * to non-nullable targetlist items, but only for references above that join.
  *
  * If we are looking at a member subquery of an append relation,
  * containing_appendrel describes that relation; else it is NULL.
@@ -629,17 +475,15 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode)
  * subquery RangeTblRef entries will be replaced.  Also, we can't turn
  * pullup_replace_vars loose on the whole jointree, because it'll return a
  * mutated copy of the tree; we have to invoke it just on the quals, instead.
- * This behavior is what makes it reasonable to pass lowest_outer_join and
- * lowest_nulling_outer_join as pointers rather than some more-indirect way
- * of identifying the lowest OJs.  Likewise, we don't replace append_rel_list
- * members but only their substructure, so the containing_appendrel reference
- * is safe to use.
+ * This behavior is what makes it reasonable to pass lowest_outer_join as a
+ * pointer rather than some more-indirect way of identifying the lowest OJ.
+ * Likewise, we don't replace append_rel_list members but only their
+ * substructure, so the containing_appendrel reference is safe to use.
  */
-static Node *
-pull_up_subqueries_recurse(PlannerInfo *root, Node *jtnode,
-						   JoinExpr *lowest_outer_join,
-						   JoinExpr *lowest_nulling_outer_join,
-						   AppendRelInfo *containing_appendrel)
+Node *
+pull_up_subqueries(PlannerInfo *root, Node *jtnode,
+				   JoinExpr *lowest_outer_join,
+				   AppendRelInfo *containing_appendrel)
 {
 	if (jtnode == NULL)
 		return NULL;
@@ -656,12 +500,11 @@ pull_up_subqueries_recurse(PlannerInfo *root, Node *jtnode,
 		 * unless is_safe_append_member says so.
 		 */
 		if (rte->rtekind == RTE_SUBQUERY &&
-			is_simple_subquery(rte->subquery, rte, lowest_outer_join) &&
+			is_simple_subquery(rte->subquery) &&
 			(containing_appendrel == NULL ||
 			 is_safe_append_member(rte->subquery)))
 			return pull_up_simple_subquery(root, jtnode, rte,
 										   lowest_outer_join,
-										   lowest_nulling_outer_join,
 										   containing_appendrel);
 
 		/*
@@ -686,10 +529,8 @@ pull_up_subqueries_recurse(PlannerInfo *root, Node *jtnode,
 
 		Assert(containing_appendrel == NULL);
 		foreach(l, f->fromlist)
-			lfirst(l) = pull_up_subqueries_recurse(root, lfirst(l),
-												   lowest_outer_join,
-												   lowest_nulling_outer_join,
-												   NULL);
+			lfirst(l) = pull_up_subqueries(root, lfirst(l),
+										   lowest_outer_join, NULL);
 	}
 	else if (IsA(jtnode, JoinExpr))
 	{
@@ -700,46 +541,30 @@ pull_up_subqueries_recurse(PlannerInfo *root, Node *jtnode,
 		switch (j->jointype)
 		{
 			case JOIN_INNER:
-				j->larg = pull_up_subqueries_recurse(root, j->larg,
-													 lowest_outer_join,
-													 lowest_nulling_outer_join,
-													 NULL);
-				j->rarg = pull_up_subqueries_recurse(root, j->rarg,
-													 lowest_outer_join,
-													 lowest_nulling_outer_join,
-													 NULL);
+				j->larg = pull_up_subqueries(root, j->larg,
+											 lowest_outer_join, NULL);
+				j->rarg = pull_up_subqueries(root, j->rarg,
+											 lowest_outer_join, NULL);
 				break;
 			case JOIN_LEFT:
 			case JOIN_SEMI:
 			case JOIN_ANTI:
-				j->larg = pull_up_subqueries_recurse(root, j->larg,
-													 j,
-													 lowest_nulling_outer_join,
-													 NULL);
-				j->rarg = pull_up_subqueries_recurse(root, j->rarg,
-													 j,
-													 j,
-													 NULL);
+				j->larg = pull_up_subqueries(root, j->larg,
+											 lowest_outer_join, NULL);
+				j->rarg = pull_up_subqueries(root, j->rarg,
+											 j, NULL);
 				break;
 			case JOIN_FULL:
-				j->larg = pull_up_subqueries_recurse(root, j->larg,
-													 j,
-													 j,
-													 NULL);
-				j->rarg = pull_up_subqueries_recurse(root, j->rarg,
-													 j,
-													 j,
-													 NULL);
+				j->larg = pull_up_subqueries(root, j->larg,
+											 j, NULL);
+				j->rarg = pull_up_subqueries(root, j->rarg,
+											 j, NULL);
 				break;
 			case JOIN_RIGHT:
-				j->larg = pull_up_subqueries_recurse(root, j->larg,
-													 j,
-													 j,
-													 NULL);
-				j->rarg = pull_up_subqueries_recurse(root, j->rarg,
-													 j,
-													 lowest_nulling_outer_join,
-													 NULL);
+				j->larg = pull_up_subqueries(root, j->larg,
+											 j, NULL);
+				j->rarg = pull_up_subqueries(root, j->rarg,
+											 lowest_outer_join, NULL);
 				break;
 			default:
 				elog(ERROR, "unrecognized join type: %d",
@@ -763,12 +588,11 @@ pull_up_subqueries_recurse(PlannerInfo *root, Node *jtnode,
  * all.
  *
  * rte is the RangeTblEntry referenced by jtnode.  Remaining parameters are
- * as for pull_up_subqueries_recurse.
+ * as for pull_up_subqueries.
  */
 static Node *
 pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 						JoinExpr *lowest_outer_join,
-						JoinExpr *lowest_nulling_outer_join,
 						AppendRelInfo *containing_appendrel)
 {
 	Query	   *parse = root->parse;
@@ -835,8 +659,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 * handling an appendrel member.
 	 */
 	subquery->jointree = (FromExpr *)
-		pull_up_subqueries_recurse(subroot, (Node *) subquery->jointree,
-								   NULL, NULL, NULL);
+		pull_up_subqueries(subroot, (Node *) subquery->jointree, NULL, NULL);
 
 	/*
 	 * Now we must recheck whether the subquery is still simple enough to pull
@@ -844,9 +667,9 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 *
 	 * We don't really need to recheck all the conditions involved, but it's
 	 * easier just to keep this "if" looking the same as the one in
-	 * pull_up_subqueries_recurse.
+	 * pull_up_subqueries.
 	 */
-	if (is_simple_subquery(subquery, rte, lowest_outer_join) &&
+	if (is_simple_subquery(subquery) &&
 		(containing_appendrel == NULL || is_safe_append_member(subquery)))
 	{
 		/* good to go */
@@ -893,7 +716,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	rvcontext.target_rte = rte;
 	rvcontext.outer_hasSubLinks = &parse->hasSubLinks;
 	rvcontext.varno = varno;
-	rvcontext.need_phvs = (lowest_nulling_outer_join != NULL ||
+	rvcontext.need_phvs = (lowest_outer_join != NULL ||
 						   containing_appendrel != NULL);
 	rvcontext.wrap_non_vars = (containing_appendrel != NULL);
 	/* initialize cache array with indexes 0 .. length(tlist) */
@@ -914,7 +737,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	parse->returningList = (List *)
 		pullup_replace_vars((Node *) parse->returningList, &rvcontext);
 	replace_vars_in_jointree((Node *) parse->jointree, &rvcontext,
-							 lowest_nulling_outer_join);
+							 lowest_outer_join);
 	Assert(parse->setOperations == NULL);
 	parse->havingQual = pullup_replace_vars(parse->havingQual, &rvcontext);
 
@@ -941,10 +764,10 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 * Replace references in the joinaliasvars lists of join RTEs.
 	 *
 	 * You might think that we could avoid using PHVs for alias vars of joins
-	 * below lowest_nulling_outer_join, but that doesn't work because the
-	 * alias vars could be referenced above that join; we need the PHVs to be
-	 * present in such references after the alias vars get flattened.  (It
-	 * might be worth trying to be smarter here, someday.)
+	 * below lowest_outer_join, but that doesn't work because the alias vars
+	 * could be referenced above that join; we need the PHVs to be present in
+	 * such references after the alias vars get flattened.	(It might be worth
+	 * trying to be smarter here, someday.)
 	 */
 	foreach(lc, parse->rtable)
 	{
@@ -954,35 +777,6 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 			otherrte->joinaliasvars = (List *)
 				pullup_replace_vars((Node *) otherrte->joinaliasvars,
 									&rvcontext);
-	}
-
-	/*
-	 * If the subquery had a LATERAL marker, propagate that to any of its
-	 * child RTEs that could possibly now contain lateral cross-references.
-	 * The children might or might not contain any actual lateral
-	 * cross-references, but we have to mark the pulled-up child RTEs so that
-	 * later planner stages will check for such.
-	 */
-	if (rte->lateral)
-	{
-		foreach(lc, subquery->rtable)
-		{
-			RangeTblEntry *child_rte = (RangeTblEntry *) lfirst(lc);
-
-			switch (child_rte->rtekind)
-			{
-				case RTE_SUBQUERY:
-				case RTE_FUNCTION:
-				case RTE_VALUES:
-					child_rte->lateral = true;
-					break;
-				case RTE_RELATION:
-				case RTE_JOIN:
-				case RTE_CTE:
-					/* these can't contain any lateral references */
-					break;
-			}
-		}
 	}
 
 	/*
@@ -1026,14 +820,11 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 										subroot->append_rel_list);
 
 	/*
-	 * We don't have to do the equivalent bookkeeping for outer-join or
-	 * LATERAL info, because that hasn't been set up yet.  placeholder_list
-	 * likewise.
+	 * We don't have to do the equivalent bookkeeping for outer-join info,
+	 * because that hasn't been set up yet.  placeholder_list likewise.
 	 */
 	Assert(root->join_info_list == NIL);
 	Assert(subroot->join_info_list == NIL);
-	Assert(root->lateral_info_list == NIL);
-	Assert(subroot->lateral_info_list == NIL);
 	Assert(root->placeholder_list == NIL);
 	Assert(subroot->placeholder_list == NIL);
 
@@ -1074,51 +865,30 @@ pull_up_simple_union_all(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte)
 {
 	int			varno = ((RangeTblRef *) jtnode)->rtindex;
 	Query	   *subquery = rte->subquery;
-	int			rtoffset = list_length(root->parse->rtable);
+	int			rtoffset;
 	List	   *rtable;
 
 	/*
-	 * Make a modifiable copy of the subquery's rtable, so we can adjust
-	 * upper-level Vars in it.  There are no such Vars in the setOperations
-	 * tree proper, so fixing the rtable should be sufficient.
+	 * Append the subquery rtable entries to upper query.
 	 */
-	rtable = copyObject(subquery->rtable);
-
-	/*
-	 * Upper-level vars in subquery are now one level closer to their parent
-	 * than before.  We don't have to worry about offsetting varnos, though,
-	 * because the UNION leaf queries can't cross-reference each other.
-	 */
-	IncrementVarSublevelsUp_rtable(rtable, -1, 1);
-
-	/*
-	 * If the UNION ALL subquery had a LATERAL marker, propagate that to all
-	 * its children.  The individual children might or might not contain any
-	 * actual lateral cross-references, but we have to mark the pulled-up
-	 * child RTEs so that later planner stages will check for such.
-	 */
-	if (rte->lateral)
-	{
-		ListCell   *rt;
-
-		foreach(rt, rtable)
-		{
-			RangeTblEntry *child_rte = (RangeTblEntry *) lfirst(rt);
-
-			Assert(child_rte->rtekind == RTE_SUBQUERY);
-			child_rte->lateral = true;
-		}
-	}
+	rtoffset = list_length(root->parse->rtable);
 
 	/*
 	 * Append child RTEs to parent rtable.
+	 *
+	 * Upper-level vars in subquery are now one level closer to their parent
+	 * than before.  We don't have to worry about offsetting varnos, though,
+	 * because any such vars must refer to stuff above the level of the query
+	 * we are pulling into.
 	 */
+	rtable = copyObject(subquery->rtable);
+	IncrementVarSublevelsUp_rtable(rtable, -1, 1);
 	root->parse->rtable = list_concat(root->parse->rtable, rtable);
 
 	/*
 	 * Recursively scan the subquery's setOperations tree and add
 	 * AppendRelInfo nodes for leaf subqueries to the parent's
-	 * append_rel_list.  Also apply pull_up_subqueries to the leaf subqueries.
+	 * append_rel_list.
 	 */
 	Assert(subquery->setOperations);
 	pull_up_union_leaf_queries(subquery->setOperations, root, varno, subquery,
@@ -1135,20 +905,14 @@ pull_up_simple_union_all(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte)
 /*
  * pull_up_union_leaf_queries -- recursive guts of pull_up_simple_union_all
  *
- * Build an AppendRelInfo for each leaf query in the setop tree, and then
- * apply pull_up_subqueries to the leaf query.
- *
- * Note that setOpQuery is the Query containing the setOp node, whose tlist
- * contains references to all the setop output columns.  When called from
- * pull_up_simple_union_all, this is *not* the same as root->parse, which is
- * the parent Query we are pulling up into.
+ * Note that setOpQuery is the Query containing the setOp node, whose rtable
+ * is where to look up the RTE if setOp is a RangeTblRef.  This is *not* the
+ * same as root->parse, which is the top-level Query we are pulling up into.
  *
  * parentRTindex is the appendrel parent's index in root->parse->rtable.
  *
- * The child RTEs have already been copied to the parent.  childRToffset
- * tells us where in the parent's range table they were copied.  When called
- * from flatten_simple_union_all, childRToffset is 0 since the child RTEs
- * were already in root->parse->rtable and no RT index adjustment is needed.
+ * The child RTEs have already been copied to the parent. childRToffset
+ * tells us where in the parent's range table they were copied.
  */
 static void
 pull_up_union_leaf_queries(Node *setOp, PlannerInfo *root, int parentRTindex,
@@ -1183,12 +947,11 @@ pull_up_union_leaf_queries(Node *setOp, PlannerInfo *root, int parentRTindex,
 		 * must build the AppendRelInfo first, because this will modify it.)
 		 * Note that we can pass NULL for containing-join info even if we're
 		 * actually under an outer join, because the child's expressions
-		 * aren't going to propagate up to the join.
+		 * aren't going to propagate up above the join.
 		 */
 		rtr = makeNode(RangeTblRef);
 		rtr->rtindex = childRTindex;
-		(void) pull_up_subqueries_recurse(root, (Node *) rtr,
-										  NULL, NULL, appinfo);
+		(void) pull_up_subqueries(root, (Node *) rtr, NULL, appinfo);
 	}
 	else if (IsA(setOp, SetOperationStmt))
 	{
@@ -1228,7 +991,11 @@ make_setop_translation_list(Query *query, Index newvarno,
 		if (tle->resjunk)
 			continue;
 
-		vars = lappend(vars, makeVarFromTargetEntry(newvarno, tle));
+		vars = lappend(vars, makeVar(newvarno,
+									 tle->resno,
+									 exprType((Node *) tle->expr),
+									 exprTypmod((Node *) tle->expr),
+									 0));
 	}
 
 	*translated_vars = vars;
@@ -1238,22 +1005,17 @@ make_setop_translation_list(Query *query, Index newvarno,
  * is_simple_subquery
  *	  Check a subquery in the range table to see if it's simple enough
  *	  to pull up into the parent query.
- *
- * rte is the RTE_SUBQUERY RangeTblEntry that contained the subquery.
- * (Note subquery is not necessarily equal to rte->subquery; it could be a
- * processed copy of that.)
- * lowest_outer_join is the lowest outer join above the subquery, or NULL.
  */
 static bool
-is_simple_subquery(Query *subquery, RangeTblEntry *rte,
-				   JoinExpr *lowest_outer_join)
+is_simple_subquery(Query *subquery)
 {
 	/*
 	 * Let's just make sure it's a valid subselect ...
 	 */
 	if (!IsA(subquery, Query) ||
 		subquery->commandType != CMD_SELECT ||
-		subquery->utilityStmt != NULL)
+		subquery->utilityStmt != NULL ||
+		subquery->intoClause != NULL)
 		elog(ERROR, "subquery is bogus");
 
 	/*
@@ -1285,31 +1047,6 @@ is_simple_subquery(Query *subquery, RangeTblEntry *rte,
 		subquery->hasForUpdate ||
 		subquery->cteList)
 		return false;
-
-	/*
-	 * Don't pull up if the RTE represents a security-barrier view; we couldn't
-	 * prevent information leakage once the RTE's Vars are scattered about in
-	 * the upper query.
-	 */
-	if (rte->security_barrier)
-		return false;
-
-	/*
-	 * If the subquery is LATERAL, and we're below any outer join, and the
-	 * subquery contains lateral references to rels outside the outer join,
-	 * don't pull up.  Doing so would risk creating outer-join quals that
-	 * contain references to rels outside the outer join, which is a semantic
-	 * mess that doesn't seem worth addressing at the moment.
-	 */
-	if (rte->lateral && lowest_outer_join != NULL)
-	{
-		Relids	lvarnos = pull_varnos_of_level((Node *) subquery, 1);
-		Relids	jvarnos = get_relids_in_jointree((Node *) lowest_outer_join,
-												 true);
-
-		if (!bms_is_subset(lvarnos, jvarnos))
-			return false;
-	}
 
 	/*
 	 * Don't pull up a subquery that has any set-returning functions in its
@@ -1364,7 +1101,8 @@ is_simple_union_all(Query *subquery)
 	/* Let's just make sure it's a valid subselect ... */
 	if (!IsA(subquery, Query) ||
 		subquery->commandType != CMD_SELECT ||
-		subquery->utilityStmt != NULL)
+		subquery->utilityStmt != NULL ||
+		subquery->intoClause != NULL)
 		elog(ERROR, "subquery is bogus");
 
 	/* Is it a set-operation query at all? */
@@ -1398,7 +1136,7 @@ is_simple_union_all_recurse(Node *setOp, Query *setOpQuery, List *colTypes)
 		Assert(subquery != NULL);
 
 		/* Leaf nodes are OK if they match the toplevel column types */
-		/* We don't have to compare typmods or collations here */
+		/* We don't have to compare typmods here */
 		return tlist_same_datatypes(subquery->targetList, colTypes, true);
 	}
 	else if (IsA(setOp, SetOperationStmt))
@@ -1462,62 +1200,19 @@ is_safe_append_member(Query *subquery)
  * expression in the jointree, without changing the jointree structure itself.
  * Ugly, but there's no other way...
  *
- * If we are at or below lowest_nulling_outer_join, we can suppress use of
+ * If we are at or below lowest_outer_join, we can suppress use of
  * PlaceHolderVars wrapped around the replacement expressions.
  */
 static void
 replace_vars_in_jointree(Node *jtnode,
 						 pullup_replace_vars_context *context,
-						 JoinExpr *lowest_nulling_outer_join)
+						 JoinExpr *lowest_outer_join)
 {
 	if (jtnode == NULL)
 		return;
 	if (IsA(jtnode, RangeTblRef))
 	{
-		/*
-		 * If the RangeTblRef refers to a LATERAL subquery (that isn't the
-		 * same subquery we're pulling up), it might contain references to the
-		 * target subquery, which we must replace.  We drive this from the
-		 * jointree scan, rather than a scan of the rtable, for a couple of
-		 * reasons: we can avoid processing no-longer-referenced RTEs, and we
-		 * can use the appropriate setting of need_phvs depending on whether
-		 * the RTE is above possibly-nulling outer joins or not.
-		 */
-		int			varno = ((RangeTblRef *) jtnode)->rtindex;
-
-		if (varno != context->varno)	/* ignore target subquery itself */
-		{
-			RangeTblEntry *rte = rt_fetch(varno, context->root->parse->rtable);
-
-			Assert(rte != context->target_rte);
-			if (rte->lateral)
-			{
-				switch (rte->rtekind)
-				{
-					case RTE_SUBQUERY:
-						rte->subquery =
-							pullup_replace_vars_subquery(rte->subquery,
-														 context);
-						break;
-					case RTE_FUNCTION:
-						rte->funcexpr =
-							pullup_replace_vars(rte->funcexpr,
-												context);
-						break;
-					case RTE_VALUES:
-						rte->values_lists = (List *)
-							pullup_replace_vars((Node *) rte->values_lists,
-												context);
-						break;
-					case RTE_RELATION:
-					case RTE_JOIN:
-					case RTE_CTE:
-						/* these shouldn't be marked LATERAL */
-						Assert(false);
-						break;
-				}
-			}
-		}
+		/* nothing to do here */
 	}
 	else if (IsA(jtnode, FromExpr))
 	{
@@ -1525,8 +1220,7 @@ replace_vars_in_jointree(Node *jtnode,
 		ListCell   *l;
 
 		foreach(l, f->fromlist)
-			replace_vars_in_jointree(lfirst(l), context,
-									 lowest_nulling_outer_join);
+			replace_vars_in_jointree(lfirst(l), context, lowest_outer_join);
 		f->quals = pullup_replace_vars(f->quals, context);
 	}
 	else if (IsA(jtnode, JoinExpr))
@@ -1534,14 +1228,14 @@ replace_vars_in_jointree(Node *jtnode,
 		JoinExpr   *j = (JoinExpr *) jtnode;
 		bool		save_need_phvs = context->need_phvs;
 
-		if (j == lowest_nulling_outer_join)
+		if (j == lowest_outer_join)
 		{
 			/* no more PHVs in or below this join */
 			context->need_phvs = false;
-			lowest_nulling_outer_join = NULL;
+			lowest_outer_join = NULL;
 		}
-		replace_vars_in_jointree(j->larg, context, lowest_nulling_outer_join);
-		replace_vars_in_jointree(j->rarg, context, lowest_nulling_outer_join);
+		replace_vars_in_jointree(j->larg, context, lowest_outer_join);
+		replace_vars_in_jointree(j->rarg, context, lowest_outer_join);
 		j->quals = pullup_replace_vars(j->quals, context);
 
 		/*
@@ -1676,12 +1370,6 @@ pullup_replace_vars_callback(Var *var,
 				/* Simple Vars always escape being wrapped */
 				wrap = false;
 			}
-			else if (newnode && IsA(newnode, PlaceHolderVar) &&
-					 ((PlaceHolderVar *) newnode)->phlevelsup == 0)
-			{
-				/* No need to wrap a PlaceHolderVar with another one, either */
-				wrap = false;
-			}
 			else if (rcon->wrap_non_vars)
 			{
 				/* Wrap all non-Vars in a PlaceHolderVar */
@@ -1691,16 +1379,10 @@ pullup_replace_vars_callback(Var *var,
 			{
 				/*
 				 * If it contains a Var of current level, and does not contain
-				 * any non-strict constructs, then it's certainly nullable so
-				 * we don't need to insert a PlaceHolderVar.
-				 *
-				 * This analysis could be tighter: in particular, a non-strict
-				 * construct hidden within a lower-level PlaceHolderVar is not
-				 * reason to add another PHV.  But for now it doesn't seem
-				 * worth the code to be more exact.
-				 *
-				 * Note: in future maybe we should insert a PlaceHolderVar
-				 * anyway, if the tlist item is expensive to evaluate?
+				 * any non-strict constructs, then it's certainly nullable and
+				 * we don't need to insert a PlaceHolderVar.  (Note: in future
+				 * maybe we should insert PlaceHolderVars anyway, when a tlist
+				 * item is expensive to evaluate?
 				 */
 				if (contain_vars_of_level((Node *) newnode, 0) &&
 					!contain_nonstrict_functions((Node *) newnode))
@@ -1739,121 +1421,6 @@ pullup_replace_vars_callback(Var *var,
 
 	return newnode;
 }
-
-/*
- * Apply pullup variable replacement to a subquery
- *
- * This needs to be different from pullup_replace_vars() because
- * replace_rte_variables will think that it shouldn't increment sublevels_up
- * before entering the Query; so we need to call it with sublevels_up == 1.
- */
-static Query *
-pullup_replace_vars_subquery(Query *query,
-							 pullup_replace_vars_context *context)
-{
-	Assert(IsA(query, Query));
-	return (Query *) replace_rte_variables((Node *) query,
-										   context->varno, 1,
-										   pullup_replace_vars_callback,
-										   (void *) context,
-										   NULL);
-}
-
-
-/*
- * flatten_simple_union_all
- *		Try to optimize top-level UNION ALL structure into an appendrel
- *
- * If a query's setOperations tree consists entirely of simple UNION ALL
- * operations, flatten it into an append relation, which we can process more
- * intelligently than the general setops case.	Otherwise, do nothing.
- *
- * In most cases, this can succeed only for a top-level query, because for a
- * subquery in FROM, the parent query's invocation of pull_up_subqueries would
- * already have flattened the UNION via pull_up_simple_union_all.  But there
- * are a few cases we can support here but not in that code path, for example
- * when the subquery also contains ORDER BY.
- */
-void
-flatten_simple_union_all(PlannerInfo *root)
-{
-	Query	   *parse = root->parse;
-	SetOperationStmt *topop;
-	Node	   *leftmostjtnode;
-	int			leftmostRTI;
-	RangeTblEntry *leftmostRTE;
-	int			childRTI;
-	RangeTblEntry *childRTE;
-	RangeTblRef *rtr;
-
-	/* Shouldn't be called unless query has setops */
-	topop = (SetOperationStmt *) parse->setOperations;
-	Assert(topop && IsA(topop, SetOperationStmt));
-
-	/* Can't optimize away a recursive UNION */
-	if (root->hasRecursion)
-		return;
-
-	/*
-	 * Recursively check the tree of set operations.  If not all UNION ALL
-	 * with identical column types, punt.
-	 */
-	if (!is_simple_union_all_recurse((Node *) topop, parse, topop->colTypes))
-		return;
-
-	/*
-	 * Locate the leftmost leaf query in the setops tree.  The upper query's
-	 * Vars all refer to this RTE (see transformSetOperationStmt).
-	 */
-	leftmostjtnode = topop->larg;
-	while (leftmostjtnode && IsA(leftmostjtnode, SetOperationStmt))
-		leftmostjtnode = ((SetOperationStmt *) leftmostjtnode)->larg;
-	Assert(leftmostjtnode && IsA(leftmostjtnode, RangeTblRef));
-	leftmostRTI = ((RangeTblRef *) leftmostjtnode)->rtindex;
-	leftmostRTE = rt_fetch(leftmostRTI, parse->rtable);
-	Assert(leftmostRTE->rtekind == RTE_SUBQUERY);
-
-	/*
-	 * Make a copy of the leftmost RTE and add it to the rtable.  This copy
-	 * will represent the leftmost leaf query in its capacity as a member of
-	 * the appendrel.  The original will represent the appendrel as a whole.
-	 * (We must do things this way because the upper query's Vars have to be
-	 * seen as referring to the whole appendrel.)
-	 */
-	childRTE = copyObject(leftmostRTE);
-	parse->rtable = lappend(parse->rtable, childRTE);
-	childRTI = list_length(parse->rtable);
-
-	/* Modify the setops tree to reference the child copy */
-	((RangeTblRef *) leftmostjtnode)->rtindex = childRTI;
-
-	/* Modify the formerly-leftmost RTE to mark it as an appendrel parent */
-	leftmostRTE->inh = true;
-
-	/*
-	 * Form a RangeTblRef for the appendrel, and insert it into FROM.  The top
-	 * Query of a setops tree should have had an empty FromClause initially.
-	 */
-	rtr = makeNode(RangeTblRef);
-	rtr->rtindex = leftmostRTI;
-	Assert(parse->jointree->fromlist == NIL);
-	parse->jointree->fromlist = list_make1(rtr);
-
-	/*
-	 * Now pretend the query has no setops.  We must do this before trying to
-	 * do subquery pullup, because of Assert in pull_up_simple_subquery.
-	 */
-	parse->setOperations = NULL;
-
-	/*
-	 * Build AppendRelInfo information, and apply pull_up_subqueries to the
-	 * leaf queries of the UNION ALL.  (We must do that now because they
-	 * weren't previously referenced by the jointree, and so were missed by
-	 * the main invocation of pull_up_subqueries.)
-	 */
-	pull_up_union_leaf_queries((Node *) topop, root, leftmostRTI, parse, 0);
-}
-
 
 /*
  * reduce_outer_joins
@@ -2178,11 +1745,6 @@ reduce_outer_joins_pass2(Node *jtnode,
 			 * is that we pass either the local or the upper constraints,
 			 * never both, to the children of an outer join.
 			 *
-			 * Note that a SEMI join works like an inner join here: it's okay
-			 * to pass down both local and upper constraints.  (There can't be
-			 * any upper constraints affecting its inner side, but it's not
-			 * worth having a separate code path to avoid passing them.)
-			 *
 			 * At a FULL join we just punt and pass nothing down --- is it
 			 * possible to be smarter?
 			 */
@@ -2192,7 +1754,7 @@ reduce_outer_joins_pass2(Node *jtnode,
 				if (!computed_local_nonnullable_vars)
 					local_nonnullable_vars = find_nonnullable_vars(j->quals);
 				local_forced_null_vars = find_forced_null_vars(j->quals);
-				if (jointype == JOIN_INNER || jointype == JOIN_SEMI)
+				if (jointype == JOIN_INNER)
 				{
 					/* OK to merge upper and local constraints */
 					local_nonnullable_rels = bms_add_members(local_nonnullable_rels,
@@ -2212,14 +1774,14 @@ reduce_outer_joins_pass2(Node *jtnode,
 
 			if (left_state->contains_outer)
 			{
-				if (jointype == JOIN_INNER || jointype == JOIN_SEMI)
+				if (jointype == JOIN_INNER)
 				{
 					/* pass union of local and upper constraints */
 					pass_nonnullable_rels = local_nonnullable_rels;
 					pass_nonnullable_vars = local_nonnullable_vars;
 					pass_forced_null_vars = local_forced_null_vars;
 				}
-				else if (jointype != JOIN_FULL) /* ie, LEFT or ANTI */
+				else if (jointype != JOIN_FULL) /* ie, LEFT/SEMI/ANTI */
 				{
 					/* can't pass local constraints to non-nullable side */
 					pass_nonnullable_rels = nonnullable_rels;
@@ -2274,6 +1836,8 @@ reduce_outer_joins_pass2(Node *jtnode,
  *
  * Find any PlaceHolderVar nodes in the given tree that reference the
  * pulled-up relid, and change them to reference the replacement relid(s).
+ * We do not need to recurse into subqueries, since no subquery of the current
+ * top query could (yet) contain such a reference.
  *
  * NOTE: although this has the form of a walker, we cheat and modify the
  * nodes in-place.	This should be OK since the tree was copied by
@@ -2284,7 +1848,6 @@ reduce_outer_joins_pass2(Node *jtnode,
 typedef struct
 {
 	int			varno;
-	int			sublevels_up;
 	Relids		subrelids;
 } substitute_multiple_relids_context;
 
@@ -2298,8 +1861,7 @@ substitute_multiple_relids_walker(Node *node,
 	{
 		PlaceHolderVar *phv = (PlaceHolderVar *) node;
 
-		if (phv->phlevelsup == context->sublevels_up &&
-			bms_is_member(context->varno, phv->phrels))
+		if (bms_is_member(context->varno, phv->phrels))
 		{
 			phv->phrels = bms_union(phv->phrels,
 									context->subrelids);
@@ -2308,24 +1870,10 @@ substitute_multiple_relids_walker(Node *node,
 		}
 		/* fall through to examine children */
 	}
-	if (IsA(node, Query))
-	{
-		/* Recurse into subselects */
-		bool		result;
-
-		context->sublevels_up++;
-		result = query_tree_walker((Query *) node,
-								   substitute_multiple_relids_walker,
-								   (void *) context, 0);
-		context->sublevels_up--;
-		return result;
-	}
 	/* Shouldn't need to handle planner auxiliary nodes here */
 	Assert(!IsA(node, SpecialJoinInfo));
-	Assert(!IsA(node, LateralJoinInfo));
 	Assert(!IsA(node, AppendRelInfo));
 	Assert(!IsA(node, PlaceHolderInfo));
-	Assert(!IsA(node, MinMaxAggInfo));
 
 	return expression_tree_walker(node, substitute_multiple_relids_walker,
 								  (void *) context);
@@ -2337,7 +1885,6 @@ substitute_multiple_relids(Node *node, int varno, Relids subrelids)
 	substitute_multiple_relids_context context;
 
 	context.varno = varno;
-	context.sublevels_up = 0;
 	context.subrelids = subrelids;
 
 	/*
