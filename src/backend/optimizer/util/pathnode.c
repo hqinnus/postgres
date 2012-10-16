@@ -481,26 +481,26 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		/*
 		 * Remove current element from pathlist if dominated by new.
 		 */
-		if (remove_old)
-		{
-			parent_rel->pathlist = list_delete_cell(parent_rel->pathlist,
-													p1, p1_prev);
+//		if (remove_old)
+//		{
+//			parent_rel->pathlist = list_delete_cell(parent_rel->pathlist,
+//													p1, p1_prev);
 
 			/*
 			 * Delete the data pointed-to by the deleted cell, if possible
 			 */
-			if (!IsA(old_path, IndexPath))
-				pfree(old_path);
+//			if (!IsA(old_path, IndexPath))
+//				pfree(old_path);
 			/* p1_prev does not advance */
-		}
-		else
-		{
+//		}
+//		else
+//		{
 			/* new belongs after this old path if it has cost >= old's */
 			if (new_path->total_cost >= old_path->total_cost)
 				insert_after = p1;
 			/* p1_prev advances */
 			p1_prev = p1;
-		}
+//		}
 
 		/*
 		 * If we found an old path that dominates new_path, we can quit
@@ -511,20 +511,20 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			break;
 	}
 
-	if (accept_new)
-	{
+//	if (accept_new)
+//	{
 		/* Accept the new path: insert it at proper place in pathlist */
 		if (insert_after)
 			lappend_cell(parent_rel->pathlist, insert_after, new_path);
 		else
 			parent_rel->pathlist = lcons(new_path, parent_rel->pathlist);
-	}
-	else
-	{
-		/* Reject and recycle the new path */
-		if (!IsA(new_path, IndexPath))
-			pfree(new_path);
-	}
+//	}
+//	else
+//	{
+//		/* Reject and recycle the new path */
+//		if (!IsA(new_path, IndexPath))
+//			pfree(new_path);
+//	}
 }
 
 /*

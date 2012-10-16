@@ -92,23 +92,23 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * way of implementing a full outer join, so override enable_mergejoin if
 	 * it's a full join.
 	 */
-	if (enable_mergejoin || jointype == JOIN_FULL)
-		mergeclause_list = select_mergejoin_clauses(root,
-													joinrel,
-													outerrel,
-													innerrel,
-													restrictlist,
-													jointype,
-													&mergejoin_allowed);
+//	if (enable_mergejoin || jointype == JOIN_FULL)
+//		mergeclause_list = select_mergejoin_clauses(root,
+//													joinrel,
+//													outerrel,
+//													innerrel,
+//													restrictlist,
+//													jointype,
+//													&mergejoin_allowed);
 
 	/*
 	 * If it's SEMI or ANTI join, compute correction factors for cost
 	 * estimation.	These will be the same for all paths.
 	 */
-	if (jointype == JOIN_SEMI || jointype == JOIN_ANTI)
-		compute_semi_anti_join_factors(root, outerrel, innerrel,
-									   jointype, sjinfo, restrictlist,
-									   &semifactors);
+//	if (jointype == JOIN_SEMI || jointype == JOIN_ANTI)
+//		compute_semi_anti_join_factors(root, outerrel, innerrel,
+//									   jointype, sjinfo, restrictlist,
+//									   &semifactors);
 
 	/*
 	 * Decide whether it's sensible to generate parameterized paths for this
@@ -121,9 +121,9 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * the resulting plan.	We express the restriction as a Relids set that
 	 * must overlap the parameterization of any proposed join path.
 	 */
-	foreach(lc, root->join_info_list)
-	{
-		SpecialJoinInfo *sjinfo = (SpecialJoinInfo *) lfirst(lc);
+//	foreach(lc, root->join_info_list)
+//	{
+//		SpecialJoinInfo *sjinfo = (SpecialJoinInfo *) lfirst(lc);
 
 		/*
 		 * SJ is relevant to this join if we have some part of its RHS
@@ -132,20 +132,20 @@ add_paths_to_joinrel(PlannerInfo *root,
 		 * join has already been proven legal.)  If the SJ is relevant, it
 		 * presents constraints for joining to anything not in its RHS.
 		 */
-		if (bms_overlap(joinrel->relids, sjinfo->min_righthand) &&
-			!bms_overlap(joinrel->relids, sjinfo->min_lefthand))
-			param_source_rels = bms_join(param_source_rels,
-										 bms_difference(root->all_baserels,
-													 sjinfo->min_righthand));
+//		if (bms_overlap(joinrel->relids, sjinfo->min_righthand) &&
+//			!bms_overlap(joinrel->relids, sjinfo->min_lefthand))
+//			param_source_rels = bms_join(param_source_rels,
+//										 bms_difference(root->all_baserels,
+//													 sjinfo->min_righthand));
 
 		/* full joins constrain both sides symmetrically */
-		if (sjinfo->jointype == JOIN_FULL &&
-			bms_overlap(joinrel->relids, sjinfo->min_lefthand) &&
-			!bms_overlap(joinrel->relids, sjinfo->min_righthand))
-			param_source_rels = bms_join(param_source_rels,
-										 bms_difference(root->all_baserels,
-													  sjinfo->min_lefthand));
-	}
+//		if (sjinfo->jointype == JOIN_FULL &&
+//			bms_overlap(joinrel->relids, sjinfo->min_lefthand) &&
+//			!bms_overlap(joinrel->relids, sjinfo->min_righthand))
+//			param_source_rels = bms_join(param_source_rels,
+//										 bms_difference(root->all_baserels,
+//													  sjinfo->min_lefthand));
+//	}
 
 	/*
 	 * However, when a LATERAL subquery is involved, we have to be a bit
@@ -155,24 +155,24 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * to param_source_rels anything that is laterally referenced in either
 	 * input and is not in the join already.
 	 */
-	foreach(lc, root->lateral_info_list)
-	{
-		LateralJoinInfo *ljinfo = (LateralJoinInfo *) lfirst(lc);
-
-		if (bms_is_member(ljinfo->lateral_rhs, joinrel->relids))
-			param_source_rels = bms_join(param_source_rels,
-										 bms_difference(ljinfo->lateral_lhs,
-														joinrel->relids));
-	}
+//	foreach(lc, root->lateral_info_list)
+//	{
+//		LateralJoinInfo *ljinfo = (LateralJoinInfo *) lfirst(lc);
+//
+//		if (bms_is_member(ljinfo->lateral_rhs, joinrel->relids))
+//			param_source_rels = bms_join(param_source_rels,
+//										 bms_difference(ljinfo->lateral_lhs,
+//														joinrel->relids));
+//	}
 
 	/*
 	 * 1. Consider mergejoin paths where both relations must be explicitly
 	 * sorted.	Skip this if we can't mergejoin.
 	 */
-	if (mergejoin_allowed)
-		sort_inner_and_outer(root, joinrel, outerrel, innerrel,
-							 restrictlist, mergeclause_list, jointype,
-							 sjinfo, param_source_rels);
+//	if (mergejoin_allowed)
+//		sort_inner_and_outer(root, joinrel, outerrel, innerrel,
+//							 restrictlist, mergeclause_list, jointype,
+//							 sjinfo, param_source_rels);
 
 	/*
 	 * 2. Consider paths where the outer relation need not be explicitly
@@ -199,10 +199,10 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * those made by match_unsorted_outer when add_paths_to_joinrel() is
 	 * invoked with the two rels given in the other order.
 	 */
-	if (mergejoin_allowed)
-		match_unsorted_inner(root, joinrel, outerrel, innerrel,
-							 restrictlist, mergeclause_list, jointype,
-							 sjinfo, &semifactors, param_source_rels);
+//	if (mergejoin_allowed)
+//		match_unsorted_inner(root, joinrel, outerrel, innerrel,
+//							 restrictlist, mergeclause_list, jointype,
+//							 sjinfo, &semifactors, param_source_rels);
 #endif
 
 	/*
@@ -210,10 +210,10 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * before being joined.  As above, disregard enable_hashjoin for full
 	 * joins, because there may be no other alternative.
 	 */
-	if (enable_hashjoin || jointype == JOIN_FULL)
-		hash_inner_and_outer(root, joinrel, outerrel, innerrel,
-							 restrictlist, jointype,
-							 sjinfo, &semifactors, param_source_rels);
+//	if (enable_hashjoin || jointype == JOIN_FULL)
+//		hash_inner_and_outer(root, joinrel, outerrel, innerrel,
+//							 restrictlist, jointype,
+//							 sjinfo, &semifactors, param_source_rels);
 }
 
 /*
@@ -735,10 +735,10 @@ match_unsorted_outer(PlannerInfo *root,
 		 * enable_material is off or the path in question materializes its
 		 * output anyway.
 		 */
-		if (enable_material && inner_cheapest_total != NULL &&
-			!ExecMaterializesOutput(inner_cheapest_total->pathtype))
-			matpath = (Path *)
-				create_material_path(innerrel, inner_cheapest_total);
+//		if (enable_material && inner_cheapest_total != NULL &&
+//			!ExecMaterializesOutput(inner_cheapest_total->pathtype))
+//			matpath = (Path *)
+//				create_material_path(innerrel, inner_cheapest_total);
 	}
 
 	foreach(lc1, outerrel->pathlist)

@@ -138,6 +138,8 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 	 */
 	rel = make_rel_from_joinlist(root, joinlist);
 
+	pprint(rel);
+
 	/*
 	 * The result should join all and only the query's base rels.
 	 */
@@ -391,10 +393,10 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	add_path(rel, create_seqscan_path(root, rel, required_outer));
 
 	/* Consider index scans */
-	create_index_paths(root, rel);
+//	create_index_paths(root, rel);
 
 	/* Consider TID scans */
-	create_tidscan_paths(root, rel);
+//	create_tidscan_paths(root, rel);
 
 	/* Now find the cheapest of the paths for this rel */
 	set_cheapest(rel);
