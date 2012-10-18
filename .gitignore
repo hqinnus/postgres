@@ -21,6 +21,9 @@ lcov.info
 win32ver.rc
 *.exe
 lib*dll.def
+*.patch
+cscope.out
+
 
 # Local excludes in root directory
 /GNUmakefile
@@ -30,3 +33,9 @@ lib*dll.def
 /pgsql.sln.cache
 /Debug/
 /Release/
+/bin
+/code
+/include/
+/lib/
+/share/
+tags

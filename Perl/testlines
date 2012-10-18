@@ -1,0 +1,638 @@
+    :rows 189092 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 52057.14 
+1        :total_cost 93177.49 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 2 3 4 5)
+2           :rows 189092 
+2           :startup_cost 34275.44 
+2           :total_cost 67708.58 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 3 4 5)
+3              :rows 189092 
+3              :startup_cost 590.28 
+3              :total_cost 28024.31 
+3              :outerjoinpath 
+4                {PATH 
+4                :parent_relids (b 3)
+4                 :rows 189092 
+4                 :startup_cost 0.00 
+4                 :total_cost 24124.92 
+3              :innerjoinpath 
+4                {HASHPATH 
+4                :parent_relids (b 4 5)
+4                 :rows 4176 
+4                 :startup_cost 1.90 
+4                 :total_cost 538.08 
+4                 :outerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 4)
+5                    :rows 4176 
+5                    :startup_cost 0.00 
+5                    :total_cost 478.76 
+4                 :innerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 5)
+5                    :rows 40 
+5                    :startup_cost 0.00 
+5                    :total_cost 1.40 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 2)
+3              :rows 248185 
+3              :startup_cost 0.00 
+3              :total_cost 29370.85 
+1        :innerjoinpath 
+2          {PATH 
+2          :parent_relids (b 1)
+2           :rows 456520 
+2           :startup_cost 0.00 
+2           :total_cost 10068.20 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 52057.14 
+1        :total_cost 93733.49 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 1 2 3)
+2           :rows 189092 
+2           :startup_cost 51466.86 
+2           :total_cost 89834.10 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 2 3)
+3              :rows 189092 
+3              :startup_cost 33685.16 
+3              :total_cost 64179.19 
+3              :outerjoinpath 
+4                {PATH 
+4                :parent_relids (b 3)
+4                 :rows 189092 
+4                 :startup_cost 0.00 
+4                 :total_cost 24124.92 
+3              :innerjoinpath 
+4                {PATH 
+4                :parent_relids (b 2)
+4                 :rows 248185 
+4                 :startup_cost 0.00 
+4                 :total_cost 29370.85 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 1)
+3              :rows 456520 
+3              :startup_cost 0.00 
+3              :total_cost 10068.20 
+1        :innerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 4 5)
+2           :rows 4176 
+2           :startup_cost 1.90 
+2           :total_cost 538.08 
+2           :outerjoinpath 
+3             {PATH 
+3             :parent_relids (b 4)
+3              :rows 4176 
+3              :startup_cost 0.00 
+3              :total_cost 478.76 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 5)
+3              :rows 40 
+3              :startup_cost 0.00 
+3              :total_cost 1.40 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 61520.07 
+1        :total_cost 94711.21 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 3 4 5)
+2           :rows 189092 
+2           :startup_cost 590.28 
+2           :total_cost 28024.31 
+2           :outerjoinpath 
+3             {PATH 
+3             :parent_relids (b 3)
+3              :rows 189092 
+3              :startup_cost 0.00 
+3              :total_cost 24124.92 
+2           :innerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 4 5)
+3              :rows 4176 
+3              :startup_cost 1.90 
+3              :total_cost 538.08 
+3              :outerjoinpath 
+4                {PATH 
+4                :parent_relids (b 4)
+4                 :rows 4176 
+4                 :startup_cost 0.00 
+4                 :total_cost 478.76 
+3              :innerjoinpath 
+4                {PATH 
+4                :parent_relids (b 5)
+4                 :rows 40 
+4                 :startup_cost 0.00 
+4                 :total_cost 1.40 
+1        :innerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 1 2)
+2           :rows 248185 
+2           :startup_cost 17781.70 
+2           :total_cost 56857.48 
+2           :outerjoinpath 
+3             {PATH 
+3             :parent_relids (b 2)
+3              :rows 248185 
+3              :startup_cost 0.00 
+3              :total_cost 29370.85 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 1)
+3              :rows 456520 
+3              :startup_cost 0.00 
+3              :total_cost 10068.20 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 48908.66 
+1        :total_cost 95036.21 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 1 2)
+2           :rows 248185 
+2           :startup_cost 17781.70 
+2           :total_cost 56857.48 
+2           :outerjoinpath 
+3             {PATH 
+3             :parent_relids (b 2)
+3              :rows 248185 
+3              :startup_cost 0.00 
+3              :total_cost 29370.85 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 1)
+3              :rows 456520 
+3              :startup_cost 0.00 
+3              :total_cost 10068.20 
+1        :innerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 3 4 5)
+2           :rows 189092 
+2           :startup_cost 590.28 
+2           :total_cost 28024.31 
+2           :outerjoinpath 
+3             {PATH 
+3             :parent_relids (b 3)
+3              :rows 189092 
+3              :startup_cost 0.00 
+3              :total_cost 24124.92 
+2           :innerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 4 5)
+3              :rows 4176 
+3              :startup_cost 1.90 
+3              :total_cost 538.08 
+3              :outerjoinpath 
+4                {PATH 
+4                :parent_relids (b 4)
+4                 :rows 4176 
+4                 :startup_cost 0.00 
+4                 :total_cost 478.76 
+3              :innerjoinpath 
+4                {PATH 
+4                :parent_relids (b 5)
+4                 :rows 40 
+4                 :startup_cost 0.00 
+4                 :total_cost 1.40 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 45784.55 
+1        :total_cost 95406.21 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 1 2 3)
+2           :rows 189092 
+2           :startup_cost 45194.27 
+2           :total_cost 91506.82 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 1 2)
+3              :rows 248185 
+3              :startup_cost 17781.70 
+3              :total_cost 56857.48 
+3              :outerjoinpath 
+4                {PATH 
+4                :parent_relids (b 2)
+4                 :rows 248185 
+4                 :startup_cost 0.00 
+4                 :total_cost 29370.85 
+3              :innerjoinpath 
+4                {PATH 
+4                :parent_relids (b 1)
+4                 :rows 456520 
+4                 :startup_cost 0.00 
+4                 :total_cost 10068.20 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 3)
+3              :rows 189092 
+3              :startup_cost 0.00 
+3              :total_cost 24124.92 
+1        :innerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 4 5)
+2           :rows 4176 
+2           :startup_cost 1.90 
+2           :total_cost 538.08 
+2           :outerjoinpath 
+3             {PATH 
+3             :parent_relids (b 4)
+3              :rows 4176 
+3              :startup_cost 0.00 
+3              :total_cost 478.76 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 5)
+3              :rows 40 
+3              :startup_cost 0.00 
+3              :total_cost 1.40 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 70903.23 
+1        :total_cost 2272155.55 
+1        :outerjoinpath 
+2          {PATH 
+2          :parent_relids (b 1)
+2           :rows 456520 
+2           :startup_cost 0.00 
+2           :total_cost 10068.20 
+1        :innerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 2 3 4 5)
+2           :rows 189092 
+2           :startup_cost 34275.44 
+2           :total_cost 67708.58 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 3 4 5)
+3              :rows 189092 
+3              :startup_cost 590.28 
+3              :total_cost 28024.31 
+3              :outerjoinpath 
+4                {PATH 
+4                :parent_relids (b 3)
+4                 :rows 189092 
+4                 :startup_cost 0.00 
+4                 :total_cost 24124.92 
+3              :innerjoinpath 
+4                {HASHPATH 
+4                :parent_relids (b 4 5)
+4                 :rows 4176 
+4                 :startup_cost 1.90 
+4                 :total_cost 538.08 
+4                 :outerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 4)
+5                    :rows 4176 
+5                    :startup_cost 0.00 
+5                    :total_cost 478.76 
+4                 :innerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 5)
+5                    :rows 40 
+5                    :startup_cost 0.00 
+5                    :total_cost 1.40 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 2)
+3              :rows 248185 
+3              :startup_cost 0.00 
+3              :total_cost 29370.85 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 51999.72 
+1        :total_cost 96276.08 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 1 2 3 4)
+2           :rows 189092 
+2           :startup_cost 51997.82 
+2           :total_cost 93674.17 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 2 3 4)
+3              :rows 189092 
+3              :startup_cost 34216.12 
+3              :total_cost 68019.26 
+3              :outerjoinpath 
+4                {HASHPATH 
+4                :parent_relids (b 2 3)
+4                 :rows 189092 
+4                 :startup_cost 33685.16 
+4                 :total_cost 64179.19 
+4                 :outerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 3)
+5                    :rows 189092 
+5                    :startup_cost 0.00 
+5                    :total_cost 24124.92 
+4                 :innerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 2)
+5                    :rows 248185 
+5                    :startup_cost 0.00 
+5                    :total_cost 29370.85 
+3              :innerjoinpath 
+4                {PATH 
+4                :parent_relids (b 4)
+4                 :rows 4176 
+4                 :startup_cost 0.00 
+4                 :total_cost 478.76 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 1)
+3              :rows 456520 
+3              :startup_cost 0.00 
+3              :total_cost 10068.20 
+1        :innerjoinpath 
+2          {PATH 
+2          :parent_relids (b 5)
+2           :rows 40 
+2           :startup_cost 0.00 
+2           :total_cost 1.40 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 45727.13 
+1        :total_cost 96415.08 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 2 3 4 5)
+2           :rows 189092 
+2           :startup_cost 27945.43 
+2           :total_cost 70946.17 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 2 3 4)
+3              :rows 189092 
+3              :startup_cost 27943.53 
+3              :total_cost 68344.26 
+3              :outerjoinpath 
+4                {HASHPATH 
+4                :parent_relids (b 2 3)
+4                 :rows 189092 
+4                 :startup_cost 27412.57 
+4                 :total_cost 64504.19 
+4                 :outerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 2)
+5                    :rows 248185 
+5                    :startup_cost 0.00 
+5                    :total_cost 29370.85 
+4                 :innerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 3)
+5                    :rows 189092 
+5                    :startup_cost 0.00 
+5                    :total_cost 24124.92 
+3              :innerjoinpath 
+4                {PATH 
+4                :parent_relids (b 4)
+4                 :rows 4176 
+4                 :startup_cost 0.00 
+4                 :total_cost 478.76 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 5)
+3              :rows 40 
+3              :startup_cost 0.00 
+3              :total_cost 1.40 
+1        :innerjoinpath 
+2          {PATH 
+2          :parent_relids (b 1)
+2           :rows 456520 
+2           :startup_cost 0.00 
+2           :total_cost 10068.20 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 45727.13 
+1        :total_cost 96601.08 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 1 2 3 4)
+2           :rows 189092 
+2           :startup_cost 45725.23 
+2           :total_cost 93999.16 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 2 3 4)
+3              :rows 189092 
+3              :startup_cost 27943.53 
+3              :total_cost 68344.26 
+3              :outerjoinpath 
+4                {HASHPATH 
+4                :parent_relids (b 2 3)
+4                 :rows 189092 
+4                 :startup_cost 27412.57 
+4                 :total_cost 64504.19 
+4                 :outerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 2)
+5                    :rows 248185 
+5                    :startup_cost 0.00 
+5                    :total_cost 29370.85 
+4                 :innerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 3)
+5                    :rows 189092 
+5                    :startup_cost 0.00 
+5                    :total_cost 24124.92 
+3              :innerjoinpath 
+4                {PATH 
+4                :parent_relids (b 4)
+4                 :rows 4176 
+4                 :startup_cost 0.00 
+4                 :total_cost 478.76 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 1)
+3              :rows 456520 
+3              :startup_cost 0.00 
+3              :total_cost 10068.20 
+1        :innerjoinpath 
+2          {PATH 
+2          :parent_relids (b 5)
+2           :rows 40 
+2           :startup_cost 0.00 
+2           :total_cost 1.40 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 45727.13 
+1        :total_cost 96601.08 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 1 2 3 4)
+2           :rows 189092 
+2           :startup_cost 45725.23 
+2           :total_cost 93999.16 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 2 3 4)
+3              :rows 189092 
+3              :startup_cost 27943.53 
+3              :total_cost 68344.26 
+3              :outerjoinpath 
+4                {HASHPATH 
+4                :parent_relids (b 2 3)
+4                 :rows 189092 
+4                 :startup_cost 27412.57 
+4                 :total_cost 64504.19 
+4                 :outerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 2)
+5                    :rows 248185 
+5                    :startup_cost 0.00 
+5                    :total_cost 29370.85 
+4                 :innerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 3)
+5                    :rows 189092 
+5                    :startup_cost 0.00 
+5                    :total_cost 24124.92 
+3              :innerjoinpath 
+4                {PATH 
+4                :parent_relids (b 4)
+4                 :rows 4176 
+4                 :startup_cost 0.00 
+4                 :total_cost 478.76 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 1)
+3              :rows 456520 
+3              :startup_cost 0.00 
+3              :total_cost 10068.20 
+1        :innerjoinpath 
+2          {PATH 
+2          :parent_relids (b 5)
+2           :rows 40 
+2           :startup_cost 0.00 
+2           :total_cost 1.40 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 52057.14 
+1        :total_cost 93177.49 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 2 3 4 5)
+2           :rows 189092 
+2           :startup_cost 34275.44 
+2           :total_cost 67708.58 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 3 4 5)
+3              :rows 189092 
+3              :startup_cost 590.28 
+3              :total_cost 28024.31 
+3              :outerjoinpath 
+4                {PATH 
+4                :parent_relids (b 3)
+4                 :rows 189092 
+4                 :startup_cost 0.00 
+4                 :total_cost 24124.92 
+3              :innerjoinpath 
+4                {HASHPATH 
+4                :parent_relids (b 4 5)
+4                 :rows 4176 
+4                 :startup_cost 1.90 
+4                 :total_cost 538.08 
+4                 :outerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 4)
+5                    :rows 4176 
+5                    :startup_cost 0.00 
+5                    :total_cost 478.76 
+4                 :innerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 5)
+5                    :rows 40 
+5                    :startup_cost 0.00 
+5                    :total_cost 1.40 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 2)
+3              :rows 248185 
+3              :startup_cost 0.00 
+3              :total_cost 29370.85 
+1        :innerjoinpath 
+2          {PATH 
+2          :parent_relids (b 1)
+2           :rows 456520 
+2           :startup_cost 0.00 
+2           :total_cost 10068.20 
+1        {HASHPATH 
+1       :parent_relids (b 1 2 3 4 5)
+1        :rows 189092 
+1        :startup_cost 52057.14 
+1        :total_cost 93177.49 
+1        :outerjoinpath 
+2          {HASHPATH 
+2          :parent_relids (b 2 3 4 5)
+2           :rows 189092 
+2           :startup_cost 34275.44 
+2           :total_cost 67708.58 
+2           :outerjoinpath 
+3             {HASHPATH 
+3             :parent_relids (b 3 4 5)
+3              :rows 189092 
+3              :startup_cost 590.28 
+3              :total_cost 28024.31 
+3              :outerjoinpath 
+4                {PATH 
+4                :parent_relids (b 3)
+4                 :rows 189092 
+4                 :startup_cost 0.00 
+4                 :total_cost 24124.92 
+3              :innerjoinpath 
+4                {HASHPATH 
+4                :parent_relids (b 4 5)
+4                 :rows 4176 
+4                 :startup_cost 1.90 
+4                 :total_cost 538.08 
+4                 :outerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 4)
+5                    :rows 4176 
+5                    :startup_cost 0.00 
+5                    :total_cost 478.76 
+4                 :innerjoinpath 
+5                   {PATH 
+5                   :parent_relids (b 5)
+5                    :rows 40 
+5                    :startup_cost 0.00 
+5                    :total_cost 1.40 
+2           :innerjoinpath 
+3             {PATH 
+3             :parent_relids (b 2)
+3              :rows 248185 
+3              :startup_cost 0.00 
+3              :total_cost 29370.85 
+1        :innerjoinpath 
+2          {PATH 
+2          :parent_relids (b 1)
+2           :rows 456520 
+2           :startup_cost 0.00 
+2           :total_cost 10068.20 
+  

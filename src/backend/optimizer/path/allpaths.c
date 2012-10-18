@@ -168,6 +168,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 #ifdef OPTIMIZER_DEBUG
 	debug_print_rel(root, rel);
 #endif
+	pprint(rel);
 
 	/*
 	 * The result should join all and only the query's base rels.

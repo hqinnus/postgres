@@ -1,0 +1,638 @@
+   :rows 189092 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 52057.14 
+       :total_cost 93177.49 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 2 3 4 5)
+          :rows 189092 
+          :startup_cost 34275.44 
+          :total_cost 67708.58 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 3 4 5)
+             :rows 189092 
+             :startup_cost 590.28 
+             :total_cost 28024.31 
+             :outerjoinpath 
+               {PATH 
+               :parent_relids (b 3)
+                :rows 189092 
+                :startup_cost 0.00 
+                :total_cost 24124.92 
+             :innerjoinpath 
+               {HASHPATH 
+               :parent_relids (b 4 5)
+                :rows 4176 
+                :startup_cost 1.90 
+                :total_cost 538.08 
+                :outerjoinpath 
+                  {PATH 
+                  :parent_relids (b 4)
+                   :rows 4176 
+                   :startup_cost 0.00 
+                   :total_cost 478.76 
+                :innerjoinpath 
+                  {PATH 
+                  :parent_relids (b 5)
+                   :rows 40 
+                   :startup_cost 0.00 
+                   :total_cost 1.40 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 2)
+             :rows 248185 
+             :startup_cost 0.00 
+             :total_cost 29370.85 
+       :innerjoinpath 
+         {PATH 
+         :parent_relids (b 1)
+          :rows 456520 
+          :startup_cost 0.00 
+          :total_cost 10068.20 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 52057.14 
+       :total_cost 93733.49 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 1 2 3)
+          :rows 189092 
+          :startup_cost 51466.86 
+          :total_cost 89834.10 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 2 3)
+             :rows 189092 
+             :startup_cost 33685.16 
+             :total_cost 64179.19 
+             :outerjoinpath 
+               {PATH 
+               :parent_relids (b 3)
+                :rows 189092 
+                :startup_cost 0.00 
+                :total_cost 24124.92 
+             :innerjoinpath 
+               {PATH 
+               :parent_relids (b 2)
+                :rows 248185 
+                :startup_cost 0.00 
+                :total_cost 29370.85 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 1)
+             :rows 456520 
+             :startup_cost 0.00 
+             :total_cost 10068.20 
+       :innerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 4 5)
+          :rows 4176 
+          :startup_cost 1.90 
+          :total_cost 538.08 
+          :outerjoinpath 
+            {PATH 
+            :parent_relids (b 4)
+             :rows 4176 
+             :startup_cost 0.00 
+             :total_cost 478.76 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 5)
+             :rows 40 
+             :startup_cost 0.00 
+             :total_cost 1.40 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 61520.07 
+       :total_cost 94711.21 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 3 4 5)
+          :rows 189092 
+          :startup_cost 590.28 
+          :total_cost 28024.31 
+          :outerjoinpath 
+            {PATH 
+            :parent_relids (b 3)
+             :rows 189092 
+             :startup_cost 0.00 
+             :total_cost 24124.92 
+          :innerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 4 5)
+             :rows 4176 
+             :startup_cost 1.90 
+             :total_cost 538.08 
+             :outerjoinpath 
+               {PATH 
+               :parent_relids (b 4)
+                :rows 4176 
+                :startup_cost 0.00 
+                :total_cost 478.76 
+             :innerjoinpath 
+               {PATH 
+               :parent_relids (b 5)
+                :rows 40 
+                :startup_cost 0.00 
+                :total_cost 1.40 
+       :innerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 1 2)
+          :rows 248185 
+          :startup_cost 17781.70 
+          :total_cost 56857.48 
+          :outerjoinpath 
+            {PATH 
+            :parent_relids (b 2)
+             :rows 248185 
+             :startup_cost 0.00 
+             :total_cost 29370.85 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 1)
+             :rows 456520 
+             :startup_cost 0.00 
+             :total_cost 10068.20 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 48908.66 
+       :total_cost 95036.21 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 1 2)
+          :rows 248185 
+          :startup_cost 17781.70 
+          :total_cost 56857.48 
+          :outerjoinpath 
+            {PATH 
+            :parent_relids (b 2)
+             :rows 248185 
+             :startup_cost 0.00 
+             :total_cost 29370.85 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 1)
+             :rows 456520 
+             :startup_cost 0.00 
+             :total_cost 10068.20 
+       :innerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 3 4 5)
+          :rows 189092 
+          :startup_cost 590.28 
+          :total_cost 28024.31 
+          :outerjoinpath 
+            {PATH 
+            :parent_relids (b 3)
+             :rows 189092 
+             :startup_cost 0.00 
+             :total_cost 24124.92 
+          :innerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 4 5)
+             :rows 4176 
+             :startup_cost 1.90 
+             :total_cost 538.08 
+             :outerjoinpath 
+               {PATH 
+               :parent_relids (b 4)
+                :rows 4176 
+                :startup_cost 0.00 
+                :total_cost 478.76 
+             :innerjoinpath 
+               {PATH 
+               :parent_relids (b 5)
+                :rows 40 
+                :startup_cost 0.00 
+                :total_cost 1.40 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 45784.55 
+       :total_cost 95406.21 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 1 2 3)
+          :rows 189092 
+          :startup_cost 45194.27 
+          :total_cost 91506.82 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 1 2)
+             :rows 248185 
+             :startup_cost 17781.70 
+             :total_cost 56857.48 
+             :outerjoinpath 
+               {PATH 
+               :parent_relids (b 2)
+                :rows 248185 
+                :startup_cost 0.00 
+                :total_cost 29370.85 
+             :innerjoinpath 
+               {PATH 
+               :parent_relids (b 1)
+                :rows 456520 
+                :startup_cost 0.00 
+                :total_cost 10068.20 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 3)
+             :rows 189092 
+             :startup_cost 0.00 
+             :total_cost 24124.92 
+       :innerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 4 5)
+          :rows 4176 
+          :startup_cost 1.90 
+          :total_cost 538.08 
+          :outerjoinpath 
+            {PATH 
+            :parent_relids (b 4)
+             :rows 4176 
+             :startup_cost 0.00 
+             :total_cost 478.76 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 5)
+             :rows 40 
+             :startup_cost 0.00 
+             :total_cost 1.40 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 70903.23 
+       :total_cost 2272155.55 
+       :outerjoinpath 
+         {PATH 
+         :parent_relids (b 1)
+          :rows 456520 
+          :startup_cost 0.00 
+          :total_cost 10068.20 
+       :innerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 2 3 4 5)
+          :rows 189092 
+          :startup_cost 34275.44 
+          :total_cost 67708.58 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 3 4 5)
+             :rows 189092 
+             :startup_cost 590.28 
+             :total_cost 28024.31 
+             :outerjoinpath 
+               {PATH 
+               :parent_relids (b 3)
+                :rows 189092 
+                :startup_cost 0.00 
+                :total_cost 24124.92 
+             :innerjoinpath 
+               {HASHPATH 
+               :parent_relids (b 4 5)
+                :rows 4176 
+                :startup_cost 1.90 
+                :total_cost 538.08 
+                :outerjoinpath 
+                  {PATH 
+                  :parent_relids (b 4)
+                   :rows 4176 
+                   :startup_cost 0.00 
+                   :total_cost 478.76 
+                :innerjoinpath 
+                  {PATH 
+                  :parent_relids (b 5)
+                   :rows 40 
+                   :startup_cost 0.00 
+                   :total_cost 1.40 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 2)
+             :rows 248185 
+             :startup_cost 0.00 
+             :total_cost 29370.85 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 51999.72 
+       :total_cost 96276.08 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 1 2 3 4)
+          :rows 189092 
+          :startup_cost 51997.82 
+          :total_cost 93674.17 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 2 3 4)
+             :rows 189092 
+             :startup_cost 34216.12 
+             :total_cost 68019.26 
+             :outerjoinpath 
+               {HASHPATH 
+               :parent_relids (b 2 3)
+                :rows 189092 
+                :startup_cost 33685.16 
+                :total_cost 64179.19 
+                :outerjoinpath 
+                  {PATH 
+                  :parent_relids (b 3)
+                   :rows 189092 
+                   :startup_cost 0.00 
+                   :total_cost 24124.92 
+                :innerjoinpath 
+                  {PATH 
+                  :parent_relids (b 2)
+                   :rows 248185 
+                   :startup_cost 0.00 
+                   :total_cost 29370.85 
+             :innerjoinpath 
+               {PATH 
+               :parent_relids (b 4)
+                :rows 4176 
+                :startup_cost 0.00 
+                :total_cost 478.76 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 1)
+             :rows 456520 
+             :startup_cost 0.00 
+             :total_cost 10068.20 
+       :innerjoinpath 
+         {PATH 
+         :parent_relids (b 5)
+          :rows 40 
+          :startup_cost 0.00 
+          :total_cost 1.40 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 45727.13 
+       :total_cost 96415.08 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 2 3 4 5)
+          :rows 189092 
+          :startup_cost 27945.43 
+          :total_cost 70946.17 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 2 3 4)
+             :rows 189092 
+             :startup_cost 27943.53 
+             :total_cost 68344.26 
+             :outerjoinpath 
+               {HASHPATH 
+               :parent_relids (b 2 3)
+                :rows 189092 
+                :startup_cost 27412.57 
+                :total_cost 64504.19 
+                :outerjoinpath 
+                  {PATH 
+                  :parent_relids (b 2)
+                   :rows 248185 
+                   :startup_cost 0.00 
+                   :total_cost 29370.85 
+                :innerjoinpath 
+                  {PATH 
+                  :parent_relids (b 3)
+                   :rows 189092 
+                   :startup_cost 0.00 
+                   :total_cost 24124.92 
+             :innerjoinpath 
+               {PATH 
+               :parent_relids (b 4)
+                :rows 4176 
+                :startup_cost 0.00 
+                :total_cost 478.76 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 5)
+             :rows 40 
+             :startup_cost 0.00 
+             :total_cost 1.40 
+       :innerjoinpath 
+         {PATH 
+         :parent_relids (b 1)
+          :rows 456520 
+          :startup_cost 0.00 
+          :total_cost 10068.20 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 45727.13 
+       :total_cost 96601.08 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 1 2 3 4)
+          :rows 189092 
+          :startup_cost 45725.23 
+          :total_cost 93999.16 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 2 3 4)
+             :rows 189092 
+             :startup_cost 27943.53 
+             :total_cost 68344.26 
+             :outerjoinpath 
+               {HASHPATH 
+               :parent_relids (b 2 3)
+                :rows 189092 
+                :startup_cost 27412.57 
+                :total_cost 64504.19 
+                :outerjoinpath 
+                  {PATH 
+                  :parent_relids (b 2)
+                   :rows 248185 
+                   :startup_cost 0.00 
+                   :total_cost 29370.85 
+                :innerjoinpath 
+                  {PATH 
+                  :parent_relids (b 3)
+                   :rows 189092 
+                   :startup_cost 0.00 
+                   :total_cost 24124.92 
+             :innerjoinpath 
+               {PATH 
+               :parent_relids (b 4)
+                :rows 4176 
+                :startup_cost 0.00 
+                :total_cost 478.76 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 1)
+             :rows 456520 
+             :startup_cost 0.00 
+             :total_cost 10068.20 
+       :innerjoinpath 
+         {PATH 
+         :parent_relids (b 5)
+          :rows 40 
+          :startup_cost 0.00 
+          :total_cost 1.40 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 45727.13 
+       :total_cost 96601.08 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 1 2 3 4)
+          :rows 189092 
+          :startup_cost 45725.23 
+          :total_cost 93999.16 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 2 3 4)
+             :rows 189092 
+             :startup_cost 27943.53 
+             :total_cost 68344.26 
+             :outerjoinpath 
+               {HASHPATH 
+               :parent_relids (b 2 3)
+                :rows 189092 
+                :startup_cost 27412.57 
+                :total_cost 64504.19 
+                :outerjoinpath 
+                  {PATH 
+                  :parent_relids (b 2)
+                   :rows 248185 
+                   :startup_cost 0.00 
+                   :total_cost 29370.85 
+                :innerjoinpath 
+                  {PATH 
+                  :parent_relids (b 3)
+                   :rows 189092 
+                   :startup_cost 0.00 
+                   :total_cost 24124.92 
+             :innerjoinpath 
+               {PATH 
+               :parent_relids (b 4)
+                :rows 4176 
+                :startup_cost 0.00 
+                :total_cost 478.76 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 1)
+             :rows 456520 
+             :startup_cost 0.00 
+             :total_cost 10068.20 
+       :innerjoinpath 
+         {PATH 
+         :parent_relids (b 5)
+          :rows 40 
+          :startup_cost 0.00 
+          :total_cost 1.40 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 52057.14 
+       :total_cost 93177.49 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 2 3 4 5)
+          :rows 189092 
+          :startup_cost 34275.44 
+          :total_cost 67708.58 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 3 4 5)
+             :rows 189092 
+             :startup_cost 590.28 
+             :total_cost 28024.31 
+             :outerjoinpath 
+               {PATH 
+               :parent_relids (b 3)
+                :rows 189092 
+                :startup_cost 0.00 
+                :total_cost 24124.92 
+             :innerjoinpath 
+               {HASHPATH 
+               :parent_relids (b 4 5)
+                :rows 4176 
+                :startup_cost 1.90 
+                :total_cost 538.08 
+                :outerjoinpath 
+                  {PATH 
+                  :parent_relids (b 4)
+                   :rows 4176 
+                   :startup_cost 0.00 
+                   :total_cost 478.76 
+                :innerjoinpath 
+                  {PATH 
+                  :parent_relids (b 5)
+                   :rows 40 
+                   :startup_cost 0.00 
+                   :total_cost 1.40 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 2)
+             :rows 248185 
+             :startup_cost 0.00 
+             :total_cost 29370.85 
+       :innerjoinpath 
+         {PATH 
+         :parent_relids (b 1)
+          :rows 456520 
+          :startup_cost 0.00 
+          :total_cost 10068.20 
+       {HASHPATH 
+      :parent_relids (b 1 2 3 4 5)
+       :rows 189092 
+       :startup_cost 52057.14 
+       :total_cost 93177.49 
+       :outerjoinpath 
+         {HASHPATH 
+         :parent_relids (b 2 3 4 5)
+          :rows 189092 
+          :startup_cost 34275.44 
+          :total_cost 67708.58 
+          :outerjoinpath 
+            {HASHPATH 
+            :parent_relids (b 3 4 5)
+             :rows 189092 
+             :startup_cost 590.28 
+             :total_cost 28024.31 
+             :outerjoinpath 
+               {PATH 
+               :parent_relids (b 3)
+                :rows 189092 
+                :startup_cost 0.00 
+                :total_cost 24124.92 
+             :innerjoinpath 
+               {HASHPATH 
+               :parent_relids (b 4 5)
+                :rows 4176 
+                :startup_cost 1.90 
+                :total_cost 538.08 
+                :outerjoinpath 
+                  {PATH 
+                  :parent_relids (b 4)
+                   :rows 4176 
+                   :startup_cost 0.00 
+                   :total_cost 478.76 
+                :innerjoinpath 
+                  {PATH 
+                  :parent_relids (b 5)
+                   :rows 40 
+                   :startup_cost 0.00 
+                   :total_cost 1.40 
+          :innerjoinpath 
+            {PATH 
+            :parent_relids (b 2)
+             :rows 248185 
+             :startup_cost 0.00 
+             :total_cost 29370.85 
+       :innerjoinpath 
+         {PATH 
+         :parent_relids (b 1)
+          :rows 456520 
+          :startup_cost 0.00 
+          :total_cost 10068.20 
+ 
