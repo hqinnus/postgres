@@ -13,6 +13,8 @@
  *-------------------------------------------------------------------------
  */
 
+#define OPTIMIZER_DEBUG 10  //For testing.......
+
 #include "postgres.h"
 
 #include <math.h>
@@ -138,7 +140,13 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 	 */
 	rel = make_rel_from_joinlist(root, joinlist);
 
-	pprint(rel);
+	for
+
+	ereport(LOG,
+			errmsg("Print the modified paths"));
+#ifdef OPTIMIZER_DEBUG
+			debug_print_rel(root, rel);
+#endif
 
 	/*
 	 * The result should join all and only the query's base rels.
@@ -1510,9 +1518,6 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 			/* Find and save the cheapest paths for this rel */
 			set_cheapest(rel);
 
-#ifdef OPTIMIZER_DEBUG
-			debug_print_rel(root, rel);
-#endif
 		}
 	}
 
@@ -1524,6 +1529,12 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 	Assert(list_length(root->join_rel_level[levels_needed]) == 1);
 
 	rel = (RelOptInfo *) linitial(root->join_rel_level[levels_needed]);
+
+	ereport(LOG, 
+			errmsg("Printing the Paths"));
+#ifdef OPTIMIZER_DEBUG
+	debug_print_rel(root, rel);
+#endif
 
 	root->join_rel_level = NULL;
 

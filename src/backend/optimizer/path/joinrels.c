@@ -125,6 +125,8 @@ join_search_one_level(PlannerInfo *root, int level)
 	 * suitable join clause (or join order restriction), in order to avoid
 	 * unreasonable growth of planning time.
 	 */
+	ereport(LOG, (errmsg("Starting Searching for bushy plans")));
+	int i = 0;
 	for (k = 2;; k++)
 	{
 		int			other_level = level - k;
@@ -141,6 +143,9 @@ join_search_one_level(PlannerInfo *root, int level)
 			RelOptInfo *old_rel = (RelOptInfo *) lfirst(r);
 			ListCell   *other_rels;
 			ListCell   *r2;
+
+			i++;
+			ereport(LOG, (errmsg("Searching reached %d times!"), i));
 
 			/*
 			 * We can ignore relations without join clauses here, unless they
