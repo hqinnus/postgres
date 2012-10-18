@@ -151,6 +151,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 		ListCell *p;
 		foreach(p, rel->pathlist)
 		{
+			i++;
 			if(i < pathIndex) continue;
 
 			Path *path = (Path *)lfirst(p);
@@ -160,15 +161,17 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 
 			break;
 		}
-		i++;
 	}
 
-	ereport(LOG, 
-			(errmsg("Printing the Paths")));
+	if(pathIndex == -1)
+	{
+		ereport(LOG, 
+				(errmsg("Printing the Paths")));
 #ifdef OPTIMIZER_DEBUG
-	debug_print_rel(root, rel);
+		debug_print_rel(root, rel);
 #endif
-	pprint(rel);
+		pprint(rel);
+	}
 
 	/*
 	 * The result should join all and only the query's base rels.

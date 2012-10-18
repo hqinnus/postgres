@@ -396,37 +396,37 @@ query_planner(PlannerInfo *root, List *tlist,
 	 * cheapest-total path.  Here we need consider only the behavior at the
 	 * tuple fraction point.
 	 */
-	if (sortedpath)
-	{
-		Path		sort_path;	/* dummy for result of cost_sort */
-
-		if (root->query_pathkeys == NIL ||
-			pathkeys_contained_in(root->query_pathkeys,
-								  cheapestpath->pathkeys))
-		{
-			/* No sort needed for cheapest path */
-			sort_path.startup_cost = cheapestpath->startup_cost;
-			sort_path.total_cost = cheapestpath->total_cost;
-		}
-		else
-		{
-			/* Figure cost for sorting */
-			cost_sort(&sort_path, root, root->query_pathkeys,
-					  cheapestpath->total_cost,
-					  final_rel->rows, final_rel->width,
-					  0.0, work_mem, limit_tuples);
-		}
-
-		if (compare_fractional_path_costs(sortedpath, &sort_path,
-										  tuple_fraction) > 0)
-		{
-			/* Presorted path is a loser */
-			sortedpath = NULL;
-		}
-	}
+//	if (sortedpath)
+//	{
+//		Path		sort_path;	/* dummy for result of cost_sort */
+//
+//		if (root->query_pathkeys == NIL ||
+//			pathkeys_contained_in(root->query_pathkeys,
+//								  cheapestpath->pathkeys))
+//		{
+//			/* No sort needed for cheapest path */
+//			sort_path.startup_cost = cheapestpath->startup_cost;
+//			sort_path.total_cost = cheapestpath->total_cost;
+//		}
+//		else
+//		{
+//			/* Figure cost for sorting */
+//			cost_sort(&sort_path, root, root->query_pathkeys,
+//					  cheapestpath->total_cost,
+//					  final_rel->rows, final_rel->width,
+//					  0.0, work_mem, limit_tuples);
+//		}
+//
+//		if (compare_fractional_path_costs(sortedpath, &sort_path,
+//										  tuple_fraction) > 0)
+//		{
+//			/* Presorted path is a loser */
+//			sortedpath = NULL;
+//		}
+//	}
 
 	*cheapest_path = cheapestpath;
-	*sorted_path = sortedpath;
+	*sorted_path = cheapestpath;
 }
 
 
