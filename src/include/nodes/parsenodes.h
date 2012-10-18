@@ -150,6 +150,8 @@ typedef struct Query
 
 	List	   *constraintDeps; /* a list of pg_constraint OIDs that the query
 								 * depends on to be semantically valid */
+
+	int		   pathIndex; /* Index for path selection */
 } Query;
 
 
@@ -1019,6 +1021,7 @@ typedef struct SelectStmt
 	List	   *groupClause;	/* GROUP BY clauses */
 	Node	   *havingClause;	/* HAVING conditional-expression */
 	List	   *windowClause;	/* WINDOW window_name AS (...), ... */
+	int		   pathIndex;		/* Index for the path selection */
 
 	/*
 	 * In a "leaf" node representing a VALUES list, the above fields are all

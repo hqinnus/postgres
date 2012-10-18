@@ -2042,6 +2042,7 @@ _outSelectStmt(StringInfo str, const SelectStmt *node)
 {
 	WRITE_NODE_TYPE("SELECT");
 
+	WRITE_INT_FIELD(pathIndex);
 	WRITE_NODE_FIELD(distinctClause);
 	WRITE_NODE_FIELD(intoClause);
 	WRITE_NODE_FIELD(targetList);
@@ -2245,6 +2246,7 @@ _outQuery(StringInfo str, const Query *node)
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(constraintDeps);
+	WRITE_NODE_FIELD(pathIndex);
 }
 
 static void

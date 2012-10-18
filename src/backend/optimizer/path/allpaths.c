@@ -13,9 +13,9 @@
  *-------------------------------------------------------------------------
  */
 
-#define OPTIMIZER_DEBUG 10  //For testing.......
-
 #include "postgres.h"
+
+#define OPTIMIZER_DEBUG 10        //----------------------------For Testing 
 
 #include <math.h>
 
@@ -140,12 +140,33 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 	 */
 	rel = make_rel_from_joinlist(root, joinlist);
 
-	for
+	int pathIndex = root->parse->pathIndex;
 
-	ereport(LOG,
-			errmsg("Print the modified paths"));
+	ereport(NOTICE,
+			(errmsg("Executing paths %d", pathIndex)));
+
+	int i = 0;
+	if(pathIndex > -1)
+	{
+		ListCell *p;
+		foreach(p, rel->pathlist)
+		{
+			if(i < pathIndex) continue;
+
+			Path *path = (Path *)lfirst(p);
+
+			rel->cheapest_startup_path = path;
+			rel->cheapest_total_path = path;
+
+			break;
+		}
+		i++;
+	}
+
+	ereport(LOG, 
+			(errmsg("Printing the Paths")));
 #ifdef OPTIMIZER_DEBUG
-			debug_print_rel(root, rel);
+	debug_print_rel(root, rel);
 #endif
 
 	/*
@@ -348,7 +369,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 #ifdef OPTIMIZER_DEBUG
-	debug_print_rel(root, rel);
+//	debug_print_rel(root, rel);
 #endif
 }
 
@@ -1530,10 +1551,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 	rel = (RelOptInfo *) linitial(root->join_rel_level[levels_needed]);
 
-	ereport(LOG, 
-			errmsg("Printing the Paths"));
 #ifdef OPTIMIZER_DEBUG
-	debug_print_rel(root, rel);
+//	debug_print_rel(root, rel);
 #endif
 
 	root->join_rel_level = NULL;

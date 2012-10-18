@@ -933,6 +933,7 @@ _equalQuery(const Query *a, const Query *b)
 	COMPARE_NODE_FIELD(rowMarks);
 	COMPARE_NODE_FIELD(setOperations);
 	COMPARE_NODE_FIELD(constraintDeps);
+	COMPARE_SCALAR_FIELD(pathIndex);
 
 	return true;
 }
@@ -977,6 +978,7 @@ _equalUpdateStmt(const UpdateStmt *a, const UpdateStmt *b)
 static bool
 _equalSelectStmt(const SelectStmt *a, const SelectStmt *b)
 {
+	COMPARE_SCALAR_FIELD(pathIndex);
 	COMPARE_NODE_FIELD(distinctClause);
 	COMPARE_NODE_FIELD(intoClause);
 	COMPARE_NODE_FIELD(targetList);

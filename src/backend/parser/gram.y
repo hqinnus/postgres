@@ -8936,6 +8936,23 @@ simple_select:
 					n->groupClause = $7;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->pathIndex = -1;
+					$$ = (Node *)n;
+				}
+			| SELECT '[' Iconst ']' opt_distinct target_list
+			  into_clause from_clause where_clause
+			  group_clause having_clause window_clause
+				{
+					SelectStmt *n = makeNode(SelectStmt);
+					n->pathIndex = $3;
+					n->distinctClause = $5;
+					n->targetList = $6;
+					n->intoClause = $7;
+					n->fromClause = $8;
+					n->whereClause = $9;
+					n->groupClause = $10;
+					n->havingClause = $11;
+					n->windowClause = $12;
 					$$ = (Node *)n;
 				}
 			| values_clause							{ $$ = $1; }
@@ -8956,6 +8973,7 @@ simple_select:
 
 					n->targetList = list_make1(rt);
 					n->fromClause = list_make1($2);
+					n->pathIndex = -1;
 					$$ = (Node *)n;
 				}
 			| select_clause UNION opt_all select_clause
@@ -9280,12 +9298,14 @@ values_clause:
 				{
 					SelectStmt *n = makeNode(SelectStmt);
 					n->valuesLists = list_make1($2);
+					n->pathIndex = -1;
 					$$ = (Node *) n;
 				}
 			| values_clause ',' ctext_row
 				{
 					SelectStmt *n = (SelectStmt *) $1;
 					n->valuesLists = lappend(n->valuesLists, $3);
+					n->pathIndex = -1;
 					$$ = (Node *) n;
 				}
 		;
@@ -13160,6 +13180,7 @@ makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg)
 	n->all = all;
 	n->larg = (SelectStmt *) larg;
 	n->rarg = (SelectStmt *) rarg;
+	n->pathIndex = -1;
 	return (Node *) n;
 }
 

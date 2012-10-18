@@ -2451,6 +2451,7 @@ _copyQuery(const Query *from)
 	COPY_NODE_FIELD(rowMarks);
 	COPY_NODE_FIELD(setOperations);
 	COPY_NODE_FIELD(constraintDeps);
+	COPY_SCALAR_FIELD(pathIndex);
 
 	return newnode;
 }
@@ -2503,6 +2504,7 @@ _copySelectStmt(const SelectStmt *from)
 {
 	SelectStmt *newnode = makeNode(SelectStmt);
 
+	COPY_SCALAR_FIELD(pathIndex);
 	COPY_NODE_FIELD(distinctClause);
 	COPY_NODE_FIELD(intoClause);
 	COPY_NODE_FIELD(targetList);
